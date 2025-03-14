@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 logger = getLogger(__name__)
 
 # 默认配置文件路径
-DEFAULT_CONFIG_PATH = pathlib.Path.home() / '.oj-config.json'
+DEFAULT_CONFIG_PATH = pathlib.Path.home() / '.np-config.json'
 
 # 默认配置
 DEFAULT_CONFIG = {

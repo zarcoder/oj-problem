@@ -1,54 +1,54 @@
 # np-problem-tools
 
-[中文版文档](./README_zh.md)
+[English Documentation](./README.md)
 
-`np-problem-tools` is a command-line tool for competitive programming problem setting. It helps you create problem files, validate test cases, and test your solutions.
+`np-problem-tools` 是一个用于竞赛编程题目设置的命令行工具。该工具可帮助您创建题目文件、验证测试用例并测试您的解决方案。
 
-## Features
+## 功能特点
 
-- Create problem files (std.cpp, force.cpp, problem.md, validator.py)
-- Validate test cases with custom validators
-- Test your code
-- Test your code for interactive problems
-- Generate input files from generators
-- Generate output files from inputs and reference implementations
-- **NEW** Support for configuration files to customize defaults
-- **NEW** Support for template management for different programming languages
-- **NEW** Compare solutions with random test cases
-- **NEW** Beautiful test result visualization
+- 创建题目文件（std.cpp、force.cpp、problem.md、validator.py）
+- 使用自定义验证器验证测试用例
+- 测试您的代码
+- 测试交互式问题的代码
+- 从生成器生成输入文件
+- 从输入和参考实现生成输出文件
+- **新功能** 支持配置文件以自定义默认设置
+- **新功能** 支持不同编程语言的模板管理
+- **新功能** 使用随机测试用例比较解决方案
+- **新功能** 美观的测试结果可视化
 
-## Installation
+## 安装方法
 
 ```console
 $ pip3 install np-problem-tools
 ```
 
-For enhanced visualization, install optional dependencies:
+要增强可视化效果，请安装可选依赖项：
 
 ```console
 $ pip3 install np-problem-tools[rich]
 ```
 
-## Usage
+## 使用方法
 
 ```console
-$ np problem [-l LANGUAGE]   # Create problem files with specified language
-$ np validator               # Validate test cases
-$ np test [-c COMMAND]       # Test your code
-$ np test-reactive [-c COMMAND] JUDGE_COMMAND  # Test interactive problems
-$ np generate-input GENERATOR_COMMAND  # Generate input files
-$ np generate-output [-c COMMAND] [TEST...]  # Generate output files
-$ np template list           # List available templates
-$ np template set TYPE PATH  # Set a template
-$ np compare                 # Compare standard and brute-force solutions
-$ np qa                      # Run full quality assurance check
+$ np problem [-l LANGUAGE]   # 使用指定语言创建题目文件
+$ np validator               # 验证测试用例
+$ np test [-c COMMAND]       # 测试您的代码
+$ np test-reactive [-c COMMAND] JUDGE_COMMAND  # 测试交互式问题
+$ np generate-input GENERATOR_COMMAND  # 生成输入文件
+$ np generate-output [-c COMMAND] [TEST...]  # 生成输出文件
+$ np template list           # 列出可用模板
+$ np template set TYPE PATH  # 设置模板
+$ np compare                 # 比较标准解和暴力解
+$ np qa                      # 运行完整的质量保证检查
 ```
 
-See `$ np --help` for more details.
+详细信息请参见 `$ np --help`。
 
-## Configuration
+## 配置
 
-You can create a `.np-config.json` file in your home directory to customize defaults:
+您可以在主目录中创建 `.np-config.json` 文件来自定义默认设置：
 
 ```json
 {
@@ -75,7 +75,7 @@ You can create a `.np-config.json` file in your home directory to customize defa
 }
 ```
 
-## Example: Creating a Problem
+## 示例：创建题目
 
 ```console
 $ mkdir my-problem && cd my-problem
@@ -89,7 +89,7 @@ $ np p -l cpp
 [INFO] problem files created successfully
 ```
 
-## Example: Validating Test Cases
+## 示例：验证测试用例
 
 ```console
 $ echo "3\n1 2 3" > test/sample-1.in
@@ -100,7 +100,7 @@ $ np v
 [INFO] Validation complete: 1 valid, 0 invalid
 ```
 
-## Example: Testing Your Solution
+## 示例：测试您的解决方案
 
 ```console
 $ cat <<EOF > solution.cpp
@@ -140,7 +140,7 @@ $ np t -c "./solution"
 [SUCCESS] test passed: 1 AC / 1 cases
 ```
 
-## Example: Managing Templates
+## 示例：管理模板
 
 ```console
 $ np template list
@@ -155,7 +155,7 @@ $ np template set std ~/templates/fast_io.cpp -l cpp
 [INFO] Template set: std for cpp -> /home/user/templates/fast_io.cpp
 ```
 
-## Example: Comparing Solutions
+## 示例：比较解决方案
 
 ```console
 $ np compare --count 10
@@ -169,7 +169,7 @@ $ np compare --count 10
 [INFO] All outputs match! 10/10
 ```
 
-## Example: Quality Assurance Check
+## 示例：质量保证检查
 
 ```console
 $ np qa
@@ -217,6 +217,6 @@ All outputs match! 2/2
 ✓ All checks passed!
 ```
 
-## License
+## 许可证
 
-MIT License
+MIT 许可证 

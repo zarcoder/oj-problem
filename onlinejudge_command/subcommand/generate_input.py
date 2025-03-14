@@ -30,7 +30,7 @@ tips:
   There is a command to automatically generate a input generator, `np-template` command. See https://github.com/zarcoder/template-generator .
 
   This subcommand has also the feature to find a hack case.
-    e.g. for a target program `a.out`, a correct (but possibly slow) program `naive`, and a random input-case generator `generate.py`, run $ oj g/i --hack-actual ./a.out --hack-expected ./naive 'python3 generate.py'
+    e.g. for a target program `a.out`, a correct (but possibly slow) program `naive`, and a random input-case generator `generate.py`, run $ np g/i --hack-actual ./a.out --hack-expected ./naive 'python3 generate.py'
 
   You can do similar things with shell
     e.g. $ for i in `seq 100` ; do python3 generate.py > test/random-$i.in ; done

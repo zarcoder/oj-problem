@@ -103,7 +103,7 @@ def run(args: argparse.Namespace) -> bool:
                             $ curl https://api.dropbox.com/oauth2/token --user 153gig8dqgk3ujg:5l7o7lh73o8i9ux --data grant_type=authorization_code --data code=${YOUR_ACCESS_CODE}
                         4. Get the access token from the JSON. It is in the "access_token" field.
                         5. Use the access token. For example:
-                            $ oj download """ + problem.get_url() + """ --system --dropbox-token=${YOUR_ACCESS_TOKEN}
+                            $ np download """ + problem.get_url() + """ --system --dropbox-token=${YOUR_ACCESS_TOKEN}
 
                     (Please take care that the access code and the access token are CONFIDENTIAL information. DON'T SHARE with other people!)
                 """))
@@ -118,7 +118,7 @@ def run(args: argparse.Namespace) -> bool:
                 samples = problem.download_sample_cases(session=sess)
         except requests.exceptions.RequestException as e:
             logger.error('%s', e)
-            logger.error(utils.HINT + 'You may need to login to use `$ oj download ...` during contest. Please run: $ oj login %s', problem.get_service().get_url())
+            logger.error(utils.HINT + 'You may need to login to use `$ np download ...` during contest. Please run: $ np login %s', problem.get_service().get_url())
             return False
         except SampleParseError as e:
             logger.error('%s', e)

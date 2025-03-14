@@ -1,8 +1,9 @@
-# Getting Started for `oj` command
+# Getting Started for `np` command
 
 [このドキュメントの日本語バージョン](./getting-started.ja.md)
+[中文版文档](./getting-started.zh.md)
 
-`oj` command is a command to automate typical tasks that exist in
+`np` command is a command to automate typical tasks that exist in
 competitive programming.
 
 
@@ -12,7 +13,7 @@ You can install with the following command if Python is already
 installed.
 
 ```console
-$ pip3 install --user online-judge-tools
+$ pip3 install --user np-problem-tools
 ```
 
 Linux (including Windows Subsystem for Linux) or macOS is recommended for the OS, but it also works on Windows.
@@ -35,18 +36,18 @@ and for every submission is quite troublesome. Doing the tedious tasks
 manually is easy to be omitted or be mistaken. This problem can be
 solved by automation.
 
-By `oj` command, you can automate testing with sample cases.
+By `np` command, you can automate testing with sample cases.
 Specifically, it automatically does the following:
 
 1.  Open the problem page and get sample cases
 2.  Run the program and give the sample inputs
 3.  Compare program outputs with sample outputs
 
-You can download the sample cases by `oj d URL` and test your solution
-with the downloaded sample cases by `oj t`. For example:
+You can download the sample cases by `np d URL` and test your solution
+with the downloaded sample cases by `np t`. For example:
 
 ```console
-$ oj d https://atcoder.jp/contests/agc001/tasks/agc001_a
+$ np d https://atcoder.jp/contests/agc001/tasks/agc001_a
 [x] problem recognized: AtCoderProblem.from_url('https://atcoder.jp/contests/agc001/tasks/agc001_a')
 [x] load cookie from: /home/ubuntu/.local/share/online-judge-tools/cookie.jar
 [x] GET: https://atcoder.jp/contests/agc001/tasks/agc001_a
@@ -74,7 +75,7 @@ $ oj d https://atcoder.jp/contests/agc001/tasks/agc001_a
 
 $ g++ main.cpp
 
-$ oj t
+$ np t
 [*] 2 cases found
 
 [*] sample-1
@@ -96,14 +97,14 @@ expected:
 [-] test failed: 1 AC / 2 cases
 ```
 
-The basic feature of `oj t` is almost equivalent to prepare files such
+The basic feature of `np t` is almost equivalent to prepare files such
 as `test/sample-1.in`, `test/sample-1.out` and then to run
 `for f in test/*.in ; do diff <(./a.out < $f) ${f/.in/.out} ; done`. If
 you want to test against commands other than `./a.out` (e.g.
 `python3 main.py`), use the `-c` option (e.g.
-`oj t -c "python3 main.py"`). Use the `--system` option if you want to
+`np t -c "python3 main.py"`). Use the `--system` option if you want to
 get testcases that are used for system tests instead of samples. Run
-`oj d --help` or `oj t --help` to see other features.
+`np d --help` or `np t --help` to see other features.
 
 
 ## Submit
@@ -116,14 +117,14 @@ a mistake in selecting the "problem" or "language" at the time of
 submission? If you have any such experience, we recommend automating
 submission.
 
-By `oj` command, you can automate submission. For exampl,e if you
+By `np` command, you can automate submission. For exampl,e if you
 want to submit the file `main.cpp` to the problem
 <https://codeforces.com/contest/1200/problem/F>, you can do
-`oj s https://codeforces.com/contest/1200/problem/F`. The actual output
+`np s https://codeforces.com/contest/1200/problem/F`. The actual output
 is as follows:
 
 ```console
-$ oj d https://atcoder.jp/contests/agc001/tasks/agc001_a
+$ np d https://atcoder.jp/contests/agc001/tasks/agc001_a
 [x] problem recognized: AtCoderProblem.from_url('https://atcoder.jp/contests/agc001/tasks/agc001_a')
 [x] load cookie from: /home/ubuntu/.local/share/online-judge-tools/cookie.jar
 [x] GET: https://atcoder.jp/contests/agc001/tasks/agc001_a
@@ -151,7 +152,7 @@ $ oj d https://atcoder.jp/contests/agc001/tasks/agc001_a
 
 $ g++ main.cpp
 
-$ oj t
+$ np t
 [*] 2 cases found
 
 [*] sample-1
@@ -171,7 +172,7 @@ expected:
 [x] slowest: 0.004634 sec  (for sample-2)
 [x] max memory: 2.344000 MB  (for sample-1)
 [-] test failed: 1 AC / 2 cases
-$ oj s https://codeforces.com/contest/1200/problem/F main.cpp
+$ np s https://codeforces.com/contest/1200/problem/F main.cpp
 [x] read history from: /home/ubuntu/.cache/online-judge-tools/download-history.jsonl
 [x] found urls in history:
 https://codeforces.com/contest/1200/problem/F
@@ -220,15 +221,15 @@ Opening in existing browser session.
 ```
 
 (However, since login is required for submission, please execute
-`oj login https://atcoder.jp/` in advance. If
+`np login https://atcoder.jp/` in advance. If
 [Selenium](https://www.seleniumhq.org/) is installed
 (`apt install python3-selenium firefox-geckodriver` etc. is executed),
 the GUI browser will start, so please login normally on it. (If you
 don't have Selenium, you will be asked for your username and password
 directly on the CUI.)
 
-If you already executed `oj d URL` in the same directory,
-`oj s main.cpp` will guess the URL and submit it. In order to prevent
+If you already executed `np d URL` in the same directory,
+`np s main.cpp` will guess the URL and submit it. In order to prevent
 URL specification mistakes, we recommend using this labor-saving form.
 The language is automatically recognized and set appropriately.
 
@@ -418,7 +419,7 @@ is 0, then the output becomes `AC`, otherwise `WA`.
 ### Reactive problems
 
 There is a problem submitting a program that works interactively with
-the judge program.    The command `oj t/r` is provided to run tests for
+the judge program.   The command `oj t/r` is provided to run tests for
 such a problem.
 
 For example, if the problem is

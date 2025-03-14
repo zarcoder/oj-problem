@@ -26,7 +26,7 @@ supported services:
   Toph (Problem Archive)
 
 tips:
-  This subcommand has the feature to guess the problem to submit to. To guess the problem, run `oj download https://...` in the same directory without `--directory` option before using `oj submit ...`.
+  This subcommand has the feature to guess the problem to submit to. To guess the problem, run `np download https://...` in the same directory without `--directory` option before using `np submit ...`.
 
   you can do similar things with shell and oj-api command. see https://github.com/online-judge-tools/api-client
     e.g. $ oj-api submit-code --file main.cpp --language $(oj-api guess-language-id --file main.cpp https://atcoder.jp/contests/agc001/tasks/agc001_a | jq -r .result.id) https://atcoder.jp/contests/agc001/tasks/agc001_a

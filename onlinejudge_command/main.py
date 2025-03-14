@@ -31,7 +31,7 @@ tips:
 ''',
     )
     parser.add_argument('-v', '--verbose', action='store_true')
-    parser.add_argument('--version', action='store_true', help='print the oj-problem-tools version number')
+    parser.add_argument('--version', action='store_true', help='print the np-problem-tools version number')
 
     subparsers = parser.add_subparsers(dest='subcommand', help='for details, see "{} COMMAND --help"'.format(sys.argv[0]))
     subcommand_test.add_subparser(subparsers)
@@ -49,12 +49,12 @@ tips:
 
 def run_program(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.version:
-        print('oj-problem-tools {}'.format(version.__version__))
+        print('np-problem-tools {}'.format(version.__version__))
         return 0
     logger.debug('args: %s', str(args))
 
     # print the version to use for user-supporting
-    logger.info('oj-problem-tools %s', version.__version__)
+    logger.info('np-problem-tools %s', version.__version__)
 
     # TODO: make functions for subcommand take a named tuple instead of the raw result of argparse. Using named tuples make code well-typed.
     if args.subcommand in ['test', 't']:
@@ -109,15 +109,15 @@ def main(args: Optional[List[str]] = None) -> 'NoReturn':
         logger.debug('\n' + traceback.format_exc())
         logger.error('NotImplementedError')
         logger.info('The operation you specified is not supported yet. Pull requests are welcome.')
-        logger.info('see: https://github.com/your-username/oj-problem-tools')
+        logger.info('see: https://github.com/zarcoder/np-problem-tools')
         if not is_updated:
-            logger.info(utils.HINT + 'try updating the version of oj-problem-tools: $ pip3 install -U oj-problem-tools')
+            logger.info(utils.HINT + 'try updating the version of np-problem-tools: $ pip3 install -U np-problem-tools')
         sys.exit(1)
     except Exception as e:
         logger.debug('\n' + traceback.format_exc())
         logger.exception(str(e))
         if not is_updated:
-            logger.info(utils.HINT + 'try updating the version of oj-problem-tools: $ pip3 install -U oj-problem-tools')
+            logger.info(utils.HINT + 'try updating the version of np-problem-tools: $ pip3 install -U np-problem-tools')
         sys.exit(1)
 
 

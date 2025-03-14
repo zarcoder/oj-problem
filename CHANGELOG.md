@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.0.0 / 2024-05-20
+-   Changed command prefix from `oj` to `np`
+-   Updated configuration file name from `.oj-config.json` to `.np-config.json`
+-   Updated all documentation and examples to use the new command prefix
+
 ## 12.0.0 / 2024-05-03
 -   [#927](https://github.com/online-judge-tools/oj/pull/927) (breaking changes) bump minimum Python version to 3.8 (remove Python 3.6/3.7 support)
 -   [#926](https://github.com/online-judge-tools/oj/pull/926) add dependabot
