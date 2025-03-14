@@ -25,9 +25,9 @@ format string for --format:
   (both %d and %e are required.)
 
 tips:
-  For the random testing, you can read a tutorial: https://github.com/online-judge-tools/oj/blob/master/docs/getting-started.md#random-testing
+  For the random testing, you can read a tutorial: https://github.com/zarcoder/np-problem-tools/blob/master/docs/getting-started.md#random-testing
 
-  There is a command to automatically generate a input generator, `oj-template` command. See https://github.com/online-judge-tools/template-generator .
+  There is a command to automatically generate a input generator, `np-template` command. See https://github.com/zarcoder/template-generator .
 
   This subcommand has also the feature to find a hack case.
     e.g. for a target program `a.out`, a correct (but possibly slow) program `naive`, and a random input-case generator `generate.py`, run $ oj g/i --hack-actual ./a.out --hack-expected ./naive 'python3 generate.py'

@@ -7,7 +7,6 @@ from typing import *
 import packaging.version
 import requests
 
-import onlinejudge.__about__ as api_version
 import onlinejudge_command.__about__ as version
 from onlinejudge.utils import user_cache_dir
 
@@ -93,8 +92,7 @@ def run() -> bool:
 
     try:
         is_updated = run_for_package(package_name=version.__package_name__, current_version=version.__version__)
-        is_api_updated = run_for_package(package_name=api_version.__package_name__, current_version=api_version.__version__)
-        return is_updated and is_api_updated
+        return is_updated
 
     except Exception as e:
         logger.error('failed to check update: %s', e)

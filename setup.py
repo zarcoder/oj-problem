@@ -13,7 +13,6 @@ setup(
     description=version.__description__,
     python_requires='>=3.8',
     install_requires=[
-        'online-judge-api-client >= 10.9.0, < 11',
         'colorama >= 0.3, < 1',
         'packaging >= 24',
         'requests >= 2, < 3',
@@ -21,7 +20,7 @@ setup(
     packages=find_packages(exclude=('tests', 'docs')),
     entry_points={
         'console_scripts': [
-            'oj = onlinejudge_command.main:main',
+            'np = onlinejudge_command.main:main',
         ],
     },
 )

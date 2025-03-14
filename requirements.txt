@@ -1,0 +1,9 @@
+# Required dependencies
+colorama>=0.4.1
+jsonschema>=3.2.0
+requests>=2.23.0
+toml>=0.10.0
+
+# Optional dependencies
+rich>=10.0.0  # For enhanced visualization
+tabulate>=0.8.7  # Alternative for table formatting if rich is not available 

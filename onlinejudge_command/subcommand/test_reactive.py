@@ -18,7 +18,7 @@ tips:
   You can do similar things with shell:
     e.g. $ mkfifo a.pipe && ./a.out < a.pipe | python3 judge.py > a.pipe
   You can repeat running until your solution fails, with while-statement of shell:
-    e.g. $ while oj t/i 'python3 judge.py' ; do : ; done
+    e.g. $ while np t/i 'python3 judge.py' ; do : ; done
 ''')
     subparser.add_argument('-c', '--command', default=utils.get_default_command(), help='your solution to be tested. (default: "{}")'.format(utils.get_default_command()))
     subparser.add_argument('judge', help='judge program using standard I/O')

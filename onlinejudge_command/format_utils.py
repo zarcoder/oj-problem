@@ -5,7 +5,7 @@ import pathlib
 import re
 import sys
 from logging import getLogger
-from typing import Dict, Generator, List, Match, Optional, Set
+from typing import Dict, Generator, List, Match, Optional, Set, Tuple
 
 logger = getLogger(__name__)
 
@@ -47,7 +47,17 @@ def percentparse(s: str, format: str, table: Dict[str, str]) -> Optional[Dict[st
     return m.groupdict()
 
 
-def glob_with_format(directory: pathlib.Path, format: str) -> List[pathlib.Path]:
+def glob_with_format(directory: pathlib.Path, format: str) -> List[Tuple[str, List[pathlib.Path]]]:
+    """
+    Glob files with the specified format.
+    
+    Args:
+        directory: Directory to search in
+        format: Format string (e.g. '%s.%e')
+        
+    Returns:
+        List of tuples (name, [in_path, out_path])
+    """
     if os.name == 'nt':
         format = format.replace('/', '\\')
     table = {}
@@ -57,7 +67,23 @@ def glob_with_format(directory: pathlib.Path, format: str) -> List[pathlib.Path]
     paths = list(map(pathlib.Path, glob.glob(pattern)))
     for path in paths:
         logger.debug('testcase globbed: %s', path)
-    return paths
+    
+    # Construct relationship of files
+    tests = collections.defaultdict(list)
+    for path in paths:
+        m = match_with_format(directory, format, path.resolve())
+        if m:
+            name = m.groupdict()['name']
+            tests[name].append(path)
+    
+    # Sort paths for each test case
+    result = []
+    for name, paths in sorted(tests.items()):
+        # Sort paths so that .in comes before .out
+        paths.sort(key=lambda p: p.suffix)
+        result.append((name, paths))
+    
+    return result
 
 
 def match_with_format(directory: pathlib.Path, format: str, path: pathlib.Path) -> Optional[Match[str]]:

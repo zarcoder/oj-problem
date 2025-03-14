@@ -14,6 +14,7 @@ from logging import getLogger
 from typing import *
 
 import onlinejudge_command.format_utils as fmtutils
+import onlinejudge_command.visualization as vis
 from onlinejudge_command import output_comparators, pretty_printers, utils
 from onlinejudge_command.output_comparators import CompareMode
 
@@ -29,7 +30,7 @@ format string for --format:
   (both %s and %e are required.)
 
 tips:
-  There is a feature to use special judges. See https://github.com/online-judge-tools/oj/blob/master/docs/getting-started.md#test-for-problems-with-special-judge for details.
+  There is a feature to use special judges. See https://github.com/zarcoder/np-problem-tools/blob/master/docs/getting-started.md#test-for-problems-with-special-judge for details.
 
   You can do similar things with shell
     e.g. $ for f in test/*.in ; do echo $f ; ./a.out < $f | diff - ${f%.in}.out ; done
@@ -309,74 +310,68 @@ def check_gnu_time(gnu_time: str) -> bool:
 
 def run(args: 'argparse.Namespace') -> int:
     # list tests
-    if not args.test:
-        args.test = fmtutils.glob_with_format(args.directory, args.format)  # by default
-    if args.ignore_backup:
-        args.test = fmtutils.drop_backup_or_hidden_files(args.test)
-    tests = fmtutils.construct_relationship_of_files(args.test, args.directory, args.format)
+    if not args.directory.exists():
+        logger.error('no such directory: %s', args.directory)
+        return 1
+    tests = fmtutils.glob_with_format(args.directory, args.format)  # type: List[Tuple[pathlib.Path, pathlib.Path]]
+    if not tests:
+        logger.error('no tests found')
+        return 1
+    logger.info('found %d tests', len(tests))
 
     # check wheather GNU time is available
-    if args.gnu_time is None:
-        if platform.system() == 'Darwin':
-            args.gnu_time = 'gtime'
-        else:
-            args.gnu_time = 'time'
-    if not check_gnu_time(args.gnu_time):
-        logger.warning('GNU time is not available: %s', args.gnu_time)
-        if platform.system() == 'Darwin':
-            logger.info(utils.HINT + 'You can install GNU time with: $ brew install gnu-time')
-        args.gnu_time = None
-    if args.mle is not None and args.gnu_time is None:
-        raise RuntimeError('--mle is used but GNU time does not exist')
+    gnu_time = 'time'
+    if platform.system() == 'Darwin':
+        gnu_time = 'gtime'
+    if not check_gnu_time(gnu_time):
+        gnu_time = None
+        logger.warning('GNU time is not available: %s', gnu_time)
+        if args.mle is not None:
+            logger.warning('MLE will be ignored')
 
     # run tests
-    history: List[Dict[str, Any]] = []
+    history = []  # type: List[Dict[str, Any]]
     if args.jobs is None:
-        for name, paths in sorted(tests.items()):
-            history += [test_single_case(name, paths['in'], paths.get('out'), args=args)]
+        for name, paths in tests:
+            history += [test_single_case(name, paths[0], paths[1] if len(paths) >= 2 else None, args=args)]
     else:
         if os.name == 'nt':
-            logger.warning("-j/--jobs option is unstable on Windows environment")
+            logger.warning("-j/--jobs option is unstable on Windows environmet")
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
             lock = threading.Lock()
-            futures: List[concurrent.futures.Future] = []
-            for name, paths in sorted(tests.items()):
-                futures += [executor.submit(test_single_case, name, paths['in'], paths.get('out'), lock=lock, args=args)]
+            futures = []  # type: List[concurrent.futures.Future]
+            for name, paths in tests:
+                futures += [executor.submit(test_single_case, name, paths[0], paths[1] if len(paths) >= 2 else None, lock=lock, args=args)]
             for future in futures:
                 history += [future.result()]
 
     # summarize
-    slowest: float = -1.0
-    slowest_name = ''
-    heaviest: float = -1.0
-    heaviest_name = ''
-    ac_count = 0
+    test_results = []
     for result in history:
-        if result['status'] == 'AC':
-            ac_count += 1
-        if slowest < result['elapsed']:
-            slowest = result['elapsed']
-            slowest_name = result['testcase']['name']
-        if result['memory'] is not None and heaviest < result['memory']:
-            heaviest = result['memory']
-            heaviest_name = result['testcase']['name']
-
-    # print the summary
-    logger.info('')
-    logger.info('slowest: %f sec  (for %s)', slowest, slowest_name)
-    if heaviest >= 0:
-        if heaviest < MEMORY_WARNING:
-            logger.info('max memory: %f MB  (for %s)', heaviest, heaviest_name)
-        else:
-            logger.warning('max memory: %f MB  (for %s)', heaviest, heaviest_name)
-    if ac_count == len(tests):
-        logger.info(utils.SUCCESS + 'test ' + utils.green('success') + ': %d cases', len(tests))
+        status = result['status']
+        # 检查 status 是否为字符串，如果不是则获取其 value 属性
+        status_value = status if isinstance(status, str) else status.value
+        
+        test_results.append({
+            'test_name': result['testcase']['name'],
+            'status': status_value,
+            'time': result['elapsed'],
+            'memory': result['memory']
+        })
+    
+    # Print results using visualization module
+    vis.print_header("Test Results")
+    vis.print_test_results(test_results)
+    
+    # Check if all tests passed
+    ac_count = sum(1 for result in history if result['status'] == JudgeStatus.AC or result['status'] == 'AC')
+    total_count = len(history)
+    if total_count == 0:
+        logger.error('no tests')
+        return 1
+    elif ac_count != total_count:
+        logger.info('some cases failed')
+        return 1
     else:
-        logger.info(utils.FAILURE + 'test ' + utils.red('failed') + ': %d AC / %d cases', ac_count, len(tests))
-
-    if args.log_file:
-        with args.log_file.open(mode='w') as fh:
-            json.dump(history, fh)
-
-    # return the result
-    return ac_count == len(tests)
+        logger.info('all tests passed')
+        return 0
