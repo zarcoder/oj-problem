@@ -44,6 +44,6 @@ jobs:
 
     - name: Run tests
       run: |
-        oj -h
+        np -h
         pytest -v tests/*.py
       shell: bash
