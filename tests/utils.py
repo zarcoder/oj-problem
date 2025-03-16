@@ -40,7 +40,12 @@ def run(args: List[str], *, env=None, check=False, pipe_stderr=False) -> subproc
     env = env or dict(os.environ)
     env['PYTHONPATH'] = str(pathlib.Path(__file__).parent.parent)  # this is required to run in sandboxes
     err = subprocess.PIPE if pipe_stderr else sys.stderr
-    return subprocess.run([sys.executable, '-m', 'onlinejudge_command.main'] + args, stdout=subprocess.PIPE, stderr=err, env=env, check=check)  # type: ignore
+    
+    # 获取np脚本的路径
+    np_path = str(pathlib.Path(__file__).parent.parent / 'np')
+    
+    # 使用np脚本而不是直接调用模块
+    return subprocess.run([np_path] + args, stdout=subprocess.PIPE, stderr=err, env=env, check=check)
 
 
 def run_in_sandbox(args, files, pipe_stderr=False):

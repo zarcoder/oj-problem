@@ -1,5 +1,10 @@
 # Change Log
 
+## 1.1.0 / 2024-03-16
+-   修改测试代码以适配 `np` 命令
+-   优化命令行工具的执行逻辑
+-   添加对 `.ans` 文件格式的支持
+
 ## 1.0.0 / 2024-05-20
 -   Changed command prefix from `oj` to `np`
 -   Updated configuration file name from `.oj-config.json` to `.np-config.json`
