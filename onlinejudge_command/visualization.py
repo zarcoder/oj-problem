@@ -214,12 +214,20 @@ def print_compare_results(compare_results: List[Dict[str, Any]]) -> None:
             - match: Whether outputs match (True/False)
             - std_time: Execution time for std solution
             - force_time: Execution time for force solution
+            - std_status: Status of std solution (AC, RE, TLE, RJ)
+            - force_status: Status of force solution (AC, RE, TLE, RJ)
     """
     if not compare_results:
         print_warning("No comparison results to display")
         return
     
     headers = ["Test", "Result", "Std Time (s)", "Force Time (s)", "Speedup"]
+    
+    # Check if we have status information
+    has_status = any('std_status' in result for result in compare_results)
+    if has_status:
+        headers = ["Test", "Result", "Std Status", "Force Status", "Std Time (s)", "Force Time (s)", "Speedup"]
+    
     rows = []
     
     for result in compare_results:
@@ -228,20 +236,33 @@ def print_compare_results(compare_results: List[Dict[str, Any]]) -> None:
         force_time = result.get('force_time', 0)
         
         # Calculate speedup
-        if force_time > 0:
+        if force_time > 0 and std_time > 0:
             speedup = std_time / force_time
             speedup_str = f"{speedup:.2f}x"
         else:
             speedup_str = "N/A"
         
         # Format row data
-        row = [
-            result.get('test_id', 'Unknown'),
-            "Match" if match else "Mismatch",
-            f"{std_time:.6f}",
-            f"{force_time:.6f}",
-            speedup_str
-        ]
+        if has_status:
+            std_status = result.get('std_status', 'N/A')
+            force_status = result.get('force_status', 'N/A')
+            row = [
+                result.get('test_id', 'Unknown'),
+                "Match" if match else "Mismatch",
+                std_status,
+                force_status,
+                f"{std_time:.6f}",
+                f"{force_time:.6f}",
+                speedup_str
+            ]
+        else:
+            row = [
+                result.get('test_id', 'Unknown'),
+                "Match" if match else "Mismatch",
+                f"{std_time:.6f}",
+                f"{force_time:.6f}",
+                speedup_str
+            ]
         rows.append(row)
     
     if RICH_AVAILABLE:
@@ -256,28 +277,64 @@ def print_compare_results(compare_results: List[Dict[str, Any]]) -> None:
             result_style = "bold green" if match else "bold red"
             result_text = f"[{result_style}]{row[1]}[/{result_style}]"
             
-            # Style speedup
-            std_time = compare_results[i].get('std_time', 0)
-            force_time = compare_results[i].get('force_time', 0)
-            if force_time > 0 and std_time > 0:
-                speedup = std_time / force_time
-                if speedup > 1:
-                    speedup_style = "bold green"
-                elif speedup < 1:
-                    speedup_style = "bold red"
+            # Style status if available
+            if has_status:
+                std_status = compare_results[i].get('std_status', 'N/A')
+                force_status = compare_results[i].get('force_status', 'N/A')
+                
+                std_status_style = "bold green" if std_status == 'AC' else "bold red"
+                force_status_style = "bold green" if force_status == 'AC' else "bold red"
+                
+                std_status_text = f"[{std_status_style}]{row[2]}[/{std_status_style}]"
+                force_status_text = f"[{force_status_style}]{row[3]}[/{force_status_style}]"
+                
+                # Style speedup
+                std_time = compare_results[i].get('std_time', 0)
+                force_time = compare_results[i].get('force_time', 0)
+                if force_time > 0 and std_time > 0:
+                    speedup = std_time / force_time
+                    if speedup > 1:
+                        speedup_style = "bold green"
+                    elif speedup < 1:
+                        speedup_style = "bold red"
+                    else:
+                        speedup_style = "bold white"
+                    speedup_text = f"[{speedup_style}]{row[6]}[/{speedup_style}]"
                 else:
-                    speedup_style = "bold white"
-                speedup_text = f"[{speedup_style}]{row[4]}[/{speedup_style}]"
+                    speedup_text = row[6]
+                
+                styled_row = [
+                    row[0],
+                    result_text,
+                    std_status_text,
+                    force_status_text,
+                    row[4],
+                    row[5],
+                    speedup_text
+                ]
             else:
-                speedup_text = row[4]
-            
-            styled_row = [
-                row[0],
-                result_text,
-                row[2],
-                row[3],
-                speedup_text
-            ]
+                # Style speedup
+                std_time = compare_results[i].get('std_time', 0)
+                force_time = compare_results[i].get('force_time', 0)
+                if force_time > 0 and std_time > 0:
+                    speedup = std_time / force_time
+                    if speedup > 1:
+                        speedup_style = "bold green"
+                    elif speedup < 1:
+                        speedup_style = "bold red"
+                    else:
+                        speedup_style = "bold white"
+                    speedup_text = f"[{speedup_style}]{row[4]}[/{speedup_style}]"
+                else:
+                    speedup_text = row[4]
+                
+                styled_row = [
+                    row[0],
+                    result_text,
+                    row[2],
+                    row[3],
+                    speedup_text
+                ]
             
             table.add_row(*styled_row)
         

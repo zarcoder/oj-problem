@@ -91,7 +91,7 @@ def match_with_format(directory: pathlib.Path, format: str, path: pathlib.Path) 
         format = format.replace('/', '\\')
     table = {}
     table['s'] = '(?P<name>.+)'
-    table['e'] = '(?P<ext>in|out)'
+    table['e'] = '(?P<ext>in|out|ans)'
     pattern = re.compile(re.escape(str(directory.resolve()) + os.path.sep) + percentformat(re.escape(format).replace(re.escape('%'), '%'), table))
     return pattern.match(str(path.resolve()))
 
@@ -131,11 +131,13 @@ def construct_relationship_of_files(paths: List[pathlib.Path], directory: pathli
         tests[name][ext] = path
     for name in tests:
         if 'in' not in tests[name]:
-            assert 'out' in tests[name]
-            logger.error('dangling output case: %s', tests[name]['out'])
+            if 'out' in tests[name]:
+                logger.error('dangling output case: %s', tests[name]['out'])
+            elif 'ans' in tests[name]:
+                logger.error('dangling answer case: %s', tests[name]['ans'])
             sys.exit(1)
     if not tests:
         logger.error('no cases found')
         sys.exit(1)
     logger.info('%d cases found', len(tests))
-    return tests
+    return tests 

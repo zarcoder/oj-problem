@@ -1,0 +1,20 @@
+# Problem configuration
+name: Problem Name
+author: Author Name
+source: Source of the problem
+license: License information
+rights_owner: Rights owner
+
+# Limits
+limits:
+  time_multiplier: 1
+  time_safety_margin: 2
+  memory: 1024
+  output: 16
+  compilation_time: 60
+  validation_time: 60
+  validation_memory: 1024
+  validation_output: 16
+
+# Validation
+validation: custom

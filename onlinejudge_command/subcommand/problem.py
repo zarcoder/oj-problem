@@ -46,81 +46,152 @@ def run(args: argparse.Namespace) -> bool:
         os.makedirs(args.dir)
         logger.info('created directory: %s', args.dir)
     
-    # Create test directory
-    test_dir = args.dir / 'test'
-    if not test_dir.exists():
-        os.makedirs(test_dir)
-        logger.info('created directory: %s', test_dir)
+    # Create problem with new format (now the default)
+    return _create_problem(args, cfg, language)
+
+
+def _create_problem(args: argparse.Namespace, cfg: Dict[str, Any], language: str) -> bool:
+    """Create problem files using the standard directory structure."""
+    # Create problem.yaml
+    problem_yaml_path = args.dir / 'problem.yaml'
+    if not problem_yaml_path.exists():
+        with open(problem_yaml_path, 'w') as f:
+            f.write(_get_default_template('problem_yaml', language))
+        logger.info('created file: %s', problem_yaml_path)
     
-    # Create std file
-    std_path = args.dir / _get_filename_for_language('std', language)
-    if not std_path.exists():
-        template_path = args.template_std
-        if template_path is None:
-            template_path = config.get_template_path('std', language, cfg)
-        
-        if template_path and template_path.exists():
-            with open(template_path, 'r') as f:
-                template_content = f.read()
-            with open(std_path, 'w') as f:
-                f.write(template_content)
-        else:
-            with open(std_path, 'w') as f:
-                f.write(_get_default_template('std', language))
-        logger.info('created file: %s', std_path)
+    # Create statement directory and files
+    statement_dir = args.dir / 'statement'
+    if not statement_dir.exists():
+        os.makedirs(statement_dir)
+        logger.info('created directory: %s', statement_dir)
     
-    # Create force file
-    force_path = args.dir / _get_filename_for_language('force', language)
-    if not force_path.exists():
-        template_path = args.template_force
-        if template_path is None:
-            template_path = config.get_template_path('force', language, cfg)
-        
-        if template_path and template_path.exists():
-            with open(template_path, 'r') as f:
-                template_content = f.read()
-            with open(force_path, 'w') as f:
-                f.write(template_content)
-        else:
-            with open(force_path, 'w') as f:
-                f.write(_get_default_template('force', language))
-        logger.info('created file: %s', force_path)
+    # Create problem statement files
+    problem_tex_path = statement_dir / 'problem.en.tex'
+    if not problem_tex_path.exists():
+        with open(problem_tex_path, 'w') as f:
+            f.write(_get_default_template('problem_tex', language))
+        logger.info('created file: %s', problem_tex_path)
     
-    # Create problem.md
-    md_path = args.dir / 'problem.md'
-    if not md_path.exists():
-        template_path = args.template_md
-        if template_path is None:
-            template_path = config.get_template_path('md', language, cfg)
-        
-        if template_path and template_path.exists():
-            with open(template_path, 'r') as f:
-                template_content = f.read()
-            with open(md_path, 'w') as f:
-                f.write(template_content)
-        else:
-            with open(md_path, 'w') as f:
-                f.write(_get_default_template('md', language))
-        logger.info('created file: %s', md_path)
+    # Create attachments directory
+    attachments_dir = args.dir / 'attachments'
+    if not attachments_dir.exists():
+        os.makedirs(attachments_dir)
+        logger.info('created directory: %s', attachments_dir)
     
-    # Create validator file
-    validator_path = args.dir / 'validator.py'  # Always Python for validator
-    if not validator_path.exists():
-        template_path = args.template_validator
-        if template_path is None:
-            template_path = config.get_template_path('validator', language, cfg)
-        
-        if template_path and template_path.exists():
-            with open(template_path, 'r') as f:
-                template_content = f.read()
-            with open(validator_path, 'w') as f:
-                f.write(template_content)
-        else:
-            with open(validator_path, 'w') as f:
-                f.write(_get_default_template('validator', language))
-        logger.info('created file: %s', validator_path)
+    # Create solution directory and files
+    solution_dir = args.dir / 'solution'
+    if not solution_dir.exists():
+        os.makedirs(solution_dir)
+        logger.info('created directory: %s', solution_dir)
+    
+    # Create solution file
+    solution_tex_path = solution_dir / 'solution.en.tex'
+    if not solution_tex_path.exists():
+        with open(solution_tex_path, 'w') as f:
+            f.write(_get_default_template('solution_tex', language))
+        logger.info('created file: %s', solution_tex_path)
+    
+    # Create data directory and subdirectories
+    data_dir = args.dir / 'data'
+    if not data_dir.exists():
+        os.makedirs(data_dir)
+        logger.info('created directory: %s', data_dir)
+    
+    # Create sample directory
+    sample_dir = data_dir / 'sample'
+    if not sample_dir.exists():
+        os.makedirs(sample_dir)
+        logger.info('created directory: %s', sample_dir)
+    
+    # Create sample test files
+    sample_in_path = sample_dir / '1.in'
+    sample_ans_path = sample_dir / '1.ans'
+    if not sample_in_path.exists():
+        with open(sample_in_path, 'w') as f:
+            f.write('Sample input 1\n')
+        logger.info('created file: %s', sample_in_path)
+    if not sample_ans_path.exists():
+        with open(sample_ans_path, 'w') as f:
+            f.write('Sample output 1\n')
+        logger.info('created file: %s', sample_ans_path)
+    
+    # Create secret directory
+    secret_dir = data_dir / 'secret'
+    if not secret_dir.exists():
+        os.makedirs(secret_dir)
+        logger.info('created directory: %s', secret_dir)
+    
+    # Create generators directory
+    generators_dir = args.dir / 'generators'
+    if not generators_dir.exists():
+        os.makedirs(generators_dir)
+        logger.info('created directory: %s', generators_dir)
+    
+    # Create include directory and subdirectories
+    include_dir = args.dir / 'include'
+    if not include_dir.exists():
+        os.makedirs(include_dir)
+        logger.info('created directory: %s', include_dir)
+    
+    # Create default include directory
+    default_include_dir = include_dir / 'default'
+    if not default_include_dir.exists():
+        os.makedirs(default_include_dir)
+        logger.info('created directory: %s', default_include_dir)
+    
+    # Create submissions directory and subdirectories
+    submissions_dir = args.dir / 'submissions'
+    if not submissions_dir.exists():
+        os.makedirs(submissions_dir)
+        logger.info('created directory: %s', submissions_dir)
+    
+    # Create submissions.yaml
+    submissions_yaml_path = submissions_dir / 'submissions.yaml'
+    if not submissions_yaml_path.exists():
+        with open(submissions_yaml_path, 'w') as f:
+            f.write(_get_default_template('submissions_yaml', language))
+        logger.info('created file: %s', submissions_yaml_path)
+    
+    # Create accepted directory
+    accepted_dir = submissions_dir / 'accepted'
+    if not accepted_dir.exists():
+        os.makedirs(accepted_dir)
+        logger.info('created directory: %s', accepted_dir)
+    
+    # Create accepted solution
+    accepted_solution_path = accepted_dir / _get_filename_for_language('solution', language)
+    if not accepted_solution_path.exists():
+        with open(accepted_solution_path, 'w') as f:
+            f.write(_get_default_template('std', language))
+        logger.info('created file: %s', accepted_solution_path)
+    
+    # Create other submission directories
+    for subdir in ['rejected', 'wrong_answer', 'time_limit_exceeded', 'run_time_error', 'brute_force']:
+        subdir_path = submissions_dir / subdir
+        if not subdir_path.exists():
+            os.makedirs(subdir_path)
+            logger.info('created directory: %s', subdir_path)
+    
+    # Create input_validators directory
+    input_validators_dir = args.dir / 'input_validators'
+    if not input_validators_dir.exists():
+        os.makedirs(input_validators_dir)
+        logger.info('created directory: %s', input_validators_dir)
+    
+    # Create input validator
+    input_validator_path = input_validators_dir / 'validate.py'
+    if not input_validator_path.exists():
+        with open(input_validator_path, 'w') as f:
+            f.write(_get_default_template('validator', language))
+        logger.info('created file: %s', input_validator_path)
         # Make validator.py executable
-        os.chmod(validator_path, 0o755)
+        os.chmod(input_validator_path, 0o755)
+    
+    # Create output_validator directory
+    output_validator_dir = args.dir / 'output_validator'
+    if not output_validator_dir.exists():
+        os.makedirs(output_validator_dir)
+        logger.info('created directory: %s', output_validator_dir)
     
     logger.info('problem files created successfully')
     return True
@@ -309,6 +380,92 @@ Sample output 1 goes here
 ## Notes
 
 Additional notes go here.
+'''
+    
+    elif template_type == 'problem_yaml':
+        return '''\
+# Problem configuration
+name: Problem Name
+author: Author Name
+source: Source of the problem
+license: License information
+rights_owner: Rights owner
+
+# Limits
+limits:
+  time_multiplier: 1
+  time_safety_margin: 2
+  memory: 1024
+  output: 16
+  compilation_time: 60
+  validation_time: 60
+  validation_memory: 1024
+  validation_output: 16
+
+# Validation
+validation: custom
+'''
+
+    elif template_type == 'problem_tex':
+        return '''\
+\\problemname{Problem Name}
+
+\\begin{problemstatement}
+Problem description goes here.
+\\end{problemstatement}
+
+\\begin{inputformat}
+Input format description goes here.
+\\end{inputformat}
+
+\\begin{outputformat}
+Output format description goes here.
+\\end{outputformat}
+
+\\begin{constraints}
+Constraints go here.
+\\end{constraints}
+
+\\begin{sampleinput}
+Sample input 1 goes here
+\\end{sampleinput}
+
+\\begin{sampleoutput}
+Sample output 1 goes here
+\\end{sampleoutput}
+
+\\begin{notes}
+Additional notes go here.
+\\end{notes}
+'''
+
+    elif template_type == 'solution_tex':
+        return '''\
+\\problemname{Problem Name}
+
+\\begin{solutionstatement}
+Solution description goes here.
+\\end{solutionstatement}
+
+\\begin{complexity}
+Time complexity: O(?)
+Space complexity: O(?)
+\\end{complexity}
+'''
+
+    elif template_type == 'submissions_yaml':
+        return '''\
+# Submissions configuration
+submissions:
+  accepted:
+    - file: solution.cpp
+      description: Main solution
+  wrong_answer:
+    - file: wrong.cpp
+      description: Solution with wrong algorithm
+  time_limit_exceeded:
+    - file: slow.cpp
+      description: Slow solution
 '''
     
     return "" 

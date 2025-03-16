@@ -1,0 +1,11 @@
+# Submissions configuration
+submissions:
+  accepted:
+    - file: solution.cpp
+      description: Main solution
+  wrong_answer:
+    - file: wrong.cpp
+      description: Solution with wrong algorithm
+  time_limit_exceeded:
+    - file: slow.cpp
+      description: Slow solution

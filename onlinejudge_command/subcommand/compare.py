@@ -30,6 +30,18 @@ example:
     $ np compare --count=100      # run 100 random tests (with --random)
     $ np compare --seed=42        # use seed 42 for random tests (with --random)
     $ np compare --std=./std --force=./force  # specify solution paths
+    $ np compare --language=cpp   # specify language for solutions
+
+note:
+    By default, the command will look for solutions in the following locations:
+    - Standard solution: solution/accepted/*.{language} (or other language extension)
+    - Brute force solution: solution/brute_force/*.{language} (or other language extension)
+    
+    If a specific language is not specified or a file with the specified language is not found,
+    the command will try to find any solution file with supported languages (cpp, py, java).
+    
+    If no solution files are found in the solution directories, it will fall back to
+    std.cpp and force.cpp in the current directory.
 ''',
     )
     subparser.add_argument('--dir', '-d', type=pathlib.Path, default=pathlib.Path('.'), help='specify the directory containing solutions')
@@ -42,7 +54,7 @@ example:
     subparser.add_argument('--language', '-l', type=str, help='specify the language (cpp, python, java)')
     subparser.add_argument('--timeout', '-t', type=float, help='timeout for each test in seconds')
     subparser.add_argument('--verbose', '-v', action='store_true', help='show details of each test')
-    subparser.add_argument('--test-dir', type=pathlib.Path, default=pathlib.Path('test'), help='directory containing test files (default: test/)')
+    subparser.add_argument('--test-dir', type=pathlib.Path, default=pathlib.Path('data/sample'), help='directory containing test files (default: data/sample/)')
     subparser.add_argument('--format', '-f', default='%s.%e', help='a format string to recognize the relationship of test cases. (default: "%%s.%%e")')
 
 
@@ -55,16 +67,80 @@ def run(args: argparse.Namespace) -> bool:
     if language is None:
         language = cfg.get('default_language', 'cpp')
     
+    # Map language aliases
+    language_map = {
+        'python': 'py',
+        'python3': 'py',
+        'c++': 'cpp',
+    }
+    language = language_map.get(language.lower(), language) if language else language
+    
     # Determine paths
     if args.std:
         std_path = args.std
     else:
-        std_path = args.dir / _get_filename_for_language('std', language)
+        # First try to find in solution/accepted directory
+        solution_dir = args.dir / 'solution' / 'accepted'
+        if solution_dir.exists():
+            # Try to find file with specified language first
+            found = False
+            if language:
+                for file in solution_dir.glob(f'*.{language}'):
+                    std_path = file
+                    found = True
+                    vis.print_info(f'Using standard solution: {std_path}')
+                    break
+            
+            # If not found with specified language, try any supported language
+            if not found:
+                for lang in ['cpp', 'py', 'java']:
+                    if found:
+                        break
+                    for file in solution_dir.glob(f'*.{lang}'):
+                        std_path = file
+                        language = lang  # Update language to match found file
+                        found = True
+                        vis.print_info(f'Using standard solution: {std_path} (language: {language})')
+                        break
+            
+            # If still not found, use default
+            if not found:
+                std_path = args.dir / _get_filename_for_language('std', language)
+        else:
+            std_path = args.dir / _get_filename_for_language('std', language)
     
     if args.force:
         force_path = args.force
     else:
-        force_path = args.dir / _get_filename_for_language('force', language)
+        # First try to find in solution/brute_force directory
+        solution_dir = args.dir / 'solution' / 'brute_force'
+        if solution_dir.exists():
+            # Try to find file with specified language first
+            found = False
+            if language:
+                for file in solution_dir.glob(f'*.{language}'):
+                    force_path = file
+                    found = True
+                    vis.print_info(f'Using brute force solution: {force_path}')
+                    break
+            
+            # If not found with specified language, try any supported language
+            if not found:
+                for lang in ['cpp', 'py', 'java']:
+                    if found:
+                        break
+                    for file in solution_dir.glob(f'*.{lang}'):
+                        force_path = file
+                        # Note: We don't update language here to keep it consistent with std solution
+                        found = True
+                        vis.print_info(f'Using brute force solution: {force_path}')
+                        break
+            
+            # If still not found, use default
+            if not found:
+                force_path = args.dir / _get_filename_for_language('force', language)
+        else:
+            force_path = args.dir / _get_filename_for_language('force', language)
     
     # Check if files exist
     if not std_path.exists():
@@ -99,8 +175,14 @@ def _run_existing_tests(args: argparse.Namespace, std_executable: pathlib.Path, 
     """Run comparison tests using existing test files."""
     # Check if test directory exists
     if not args.test_dir.exists():
-        vis.print_error(f'Test directory not found: {args.test_dir}')
-        return False
+        # Try old directory structure if new one doesn't exist
+        old_test_dir = pathlib.Path('test')
+        if old_test_dir.exists():
+            vis.print_warning(f'Test directory {args.test_dir} not found, using {old_test_dir} instead')
+            args.test_dir = old_test_dir
+        else:
+            vis.print_error(f'Test directory not found: {args.test_dir}')
+            return False
     
     # Find test files
     tests = fmtutils.glob_with_format(args.test_dir, args.format)
@@ -220,29 +302,33 @@ def _run_comparison_test(
         print(input_data)
     
     # Run std solution
-    std_output, std_time = _run_solution(std_executable, input_data, language, timeout, cfg)
+    std_output, std_time, std_status = _run_solution(std_executable, input_data, language, timeout, cfg)
     
-    if std_output is None:
-        vis.print_error('std solution failed')
-        return {
-            'test_id': test_name,
-            'match': False,
-            'std_time': 0,
-            'force_time': 0,
-            'error': 'std solution failed'
-        }
-    
-    # Run force solution
-    force_output, force_time = _run_solution(force_executable, input_data, language, timeout, cfg)
-    
-    if force_output is None:
-        vis.print_error('force solution failed')
+    if std_status != 'AC':
+        vis.print_error(f'std solution failed with status: {std_status}')
         return {
             'test_id': test_name,
             'match': False,
             'std_time': std_time,
             'force_time': 0,
-            'error': 'force solution failed'
+            'std_status': std_status,
+            'force_status': 'N/A',
+            'error': f'std solution {std_status}'
+        }
+    
+    # Run force solution
+    force_output, force_time, force_status = _run_solution(force_executable, input_data, language, timeout, cfg)
+    
+    if force_status != 'AC':
+        vis.print_error(f'force solution failed with status: {force_status}')
+        return {
+            'test_id': test_name,
+            'match': False,
+            'std_time': std_time,
+            'force_time': force_time,
+            'std_status': std_status,
+            'force_status': force_status,
+            'error': f'force solution {force_status}'
         }
     
     # Compare outputs
@@ -263,13 +349,18 @@ def _run_comparison_test(
     
     # Save failing test case
     if not match:
-        test_dir = args.dir / 'test'
+        test_dir = args.dir / 'data' / 'sample'
         if not test_dir.exists():
-            os.makedirs(test_dir)
+            # Try old directory structure if new one doesn't exist
+            old_test_dir = args.dir / 'test'
+            if old_test_dir.exists():
+                test_dir = old_test_dir
+            else:
+                os.makedirs(test_dir)
         
         fail_in_path = test_dir / f'{test_name}.in'
-        fail_std_path = test_dir / f'{test_name}.std.out'
-        fail_force_path = test_dir / f'{test_name}.force.out'
+        fail_std_path = test_dir / f'{test_name}.std.ans'
+        fail_force_path = test_dir / f'{test_name}.force.ans'
         
         with open(fail_in_path, 'w') as f:
             f.write(input_data)
@@ -284,7 +375,9 @@ def _run_comparison_test(
         'test_id': test_name,
         'match': match,
         'std_time': std_time,
-        'force_time': force_time
+        'force_time': force_time,
+        'std_status': std_status,
+        'force_status': force_status
     }
 
 
@@ -355,7 +448,7 @@ def _prepare_solution(path: pathlib.Path, language: str, cfg: Dict[str, Any]) ->
         return path
 
 
-def _run_solution(executable: pathlib.Path, input_data: str, language: str, timeout: float, cfg: Dict[str, Any]) -> Tuple[Optional[str], float]:
+def _run_solution(executable: pathlib.Path, input_data: str, language: str, timeout: float, cfg: Dict[str, Any]) -> Tuple[Optional[str], float, str]:
     """
     Run solution with the given input.
     
@@ -367,12 +460,16 @@ def _run_solution(executable: pathlib.Path, input_data: str, language: str, time
         cfg: Configuration
         
     Returns:
-        Tuple of (output, time) or (None, 0) if execution failed
+        Tuple of (output, time, status) where status is one of:
+        - 'AC': Accepted (successful execution)
+        - 'RE': Runtime Error
+        - 'TLE': Time Limit Exceeded
+        - 'RJ': Rejected (other error)
     """
     if language == 'cpp':
         run_cmd = cfg.get('commands', {}).get('cpp_run', './{executable}')
         run_cmd = run_cmd.format(executable=executable)
-    elif language == 'python':
+    elif language in ['python', 'py']:
         run_cmd = cfg.get('commands', {}).get('python_run', 'python3 {input}')
         run_cmd = run_cmd.format(input=executable)
     elif language == 'java':
@@ -381,7 +478,7 @@ def _run_solution(executable: pathlib.Path, input_data: str, language: str, time
         run_cmd = run_cmd.format(dir=executable.parent, classname=classname)
     else:
         vis.print_error(f'Unsupported language: {language}')
-        return None, 0
+        return None, 0, 'RJ'
     
     try:
         start_time = time.time()
@@ -399,17 +496,17 @@ def _run_solution(executable: pathlib.Path, input_data: str, language: str, time
             vis.print_error(f'Execution failed with return code {process.returncode}')
             if process.stderr:
                 vis.print_error(f'Error: {process.stderr}')
-            return None, 0
+            return None, 0, 'RE'
         
-        return process.stdout, end_time - start_time
+        return process.stdout, end_time - start_time, 'AC'
     
     except subprocess.TimeoutExpired:
         vis.print_error(f'Execution timed out after {timeout:.1f} seconds')
-        return None, 0
+        return None, timeout, 'TLE'
     
     except Exception as e:
         vis.print_error(f'Execution failed: {e}')
-        return None, 0
+        return None, 0, 'RJ'
 
 
 def _generate_input_from_generator(generator_path: pathlib.Path) -> str:

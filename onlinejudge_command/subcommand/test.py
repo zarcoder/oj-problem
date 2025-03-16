@@ -26,18 +26,18 @@ def add_subparser(subparsers: argparse.Action) -> None:
     subparser = subparsers_add_parser('test', aliases=['t'], help='test your code', formatter_class=argparse.RawTextHelpFormatter, epilog='''\
 format string for --format:
   %s                    name
-  %e                    extension: "in" or "out"
+  %e                    extension: "in" or "ans"
   (both %s and %e are required.)
 
 tips:
   There is a feature to use special judges. See https://github.com/zarcoder/np-problem-tools/blob/master/docs/getting-started.md#test-for-problems-with-special-judge for details.
 
   You can do similar things with shell
-    e.g. $ for f in test/*.in ; do echo $f ; ./a.out < $f | diff - ${f%.in}.out ; done
+    e.g. $ for f in data/sample/*.in ; do echo $f ; ./a.out < $f | diff - ${f%.in}.ans ; done
 ''')
     subparser.add_argument('-c', '--command', default=utils.get_default_command(), help='your solution to be tested. (default: "{}")'.format(utils.get_default_command()))
     subparser.add_argument('-f', '--format', default='%s.%e', help='a format string to recognize the relationship of test cases. (default: "%%s.%%e")')
-    subparser.add_argument('-d', '--directory', type=pathlib.Path, default=pathlib.Path('test'), help='a directory name for test cases (default: test/)')
+    subparser.add_argument('-d', '--directory', type=pathlib.Path, default=pathlib.Path('data/sample'), help='a directory name for test cases (default: data/sample/)')
     subparser.add_argument('-m', '--compare-mode', choices=[mode.value for mode in CompareMode], default=CompareMode.CRLF_INSENSITIVE_EXACT_MATCH.value, help='mode to compare outputs. The default behavoir is exact-match to ensure that you always get AC on remote judge servers when you got AC on local tests for the same cases.  (default: crlf-insensitive-exact-match)')
     subparser.add_argument('-M', '--display-mode', choices=[mode.value for mode in DisplayMode], default=DisplayMode.SUMMARY.value, help='mode to display outputs  (default: summary)')
     subparser.add_argument('-S', '--ignore-spaces', dest='compare_mode', action='store_const', const=CompareMode.IGNORE_SPACES.value, help="ignore spaces to compare outputs, but doesn't ignore newlines  (equivalent to --compare-mode=ignore-spaces")
@@ -55,7 +55,8 @@ tips:
     subparser.add_argument('--no-ignore-backup', action='store_false', dest='ignore_backup')
     subparser.add_argument('--ignore-backup', action='store_true', help='ignore backup files and hidden files (i.e. files like "*~", "\\#*\\#" and ".*") (default)')
     subparser.add_argument('--log-file', type=pathlib.Path, help=argparse.SUPPRESS)
-    subparser.add_argument('--judge-command', dest='judge', default=None, help='specify judge command instead of default diff judge. The given command (e.g. `./judge`) will be called as `$ ./judge input.txt actual-output.txt expected-output.txt` and should return the result with the exit code of its `main` function.')
+    subparser.add_argument('--judge-command', dest='judge', default=None, help='specify judge command instead of default diff judge. The given command (e.g. `./judge`) will be called as `$ ./judge input.txt actual-output.txt expected-output.ans` and should return the result with the exit code of its `main` function.')
+    subparser.add_argument('--language', '-l', type=str, choices=['cpp', 'python', 'java'], help='specify the language to use for testing (default: auto-detect)')
     subparser.add_argument('test', nargs='*', type=pathlib.Path, help='paths of test cases. (if empty: globbed from --format)')
 
 
@@ -77,7 +78,7 @@ class SpecialJudge:
 
     def run(self, *, actual_output: bytes, input_path: pathlib.Path, expected_output_path: Optional[pathlib.Path]) -> bool:
         with tempfile.TemporaryDirectory() as tempdir:
-            actual_output_path = pathlib.Path(tempdir) / 'actual.out'
+            actual_output_path = pathlib.Path(tempdir) / 'actual.ans'
             with open(actual_output_path, 'wb') as fh:
                 fh.write(actual_output)
 
@@ -309,16 +310,125 @@ def check_gnu_time(gnu_time: str) -> bool:
 
 
 def run(args: 'argparse.Namespace') -> int:
+    # Check if we should use solution/accepted directory
+    solution_dir = pathlib.Path('solution/accepted')
+    if solution_dir.exists():
+        # Find all solution files in the directory
+        solution_files = []
+        
+        # If language is specified, only look for files with that extension
+        if args.language:
+            ext_map = {'cpp': 'cpp', 'python': 'py', 'java': 'java'}
+            ext = ext_map.get(args.language, args.language)
+            solution_files.extend(list(solution_dir.glob(f'*.{ext}')))
+            if not solution_files:
+                logger.error('No solution files found with extension .%s in %s', ext, solution_dir)
+                return 1
+        else:
+            # Otherwise, look for all supported languages
+            for ext in ['cpp', 'py', 'java']:
+                solution_files.extend(list(solution_dir.glob(f'*.{ext}')))
+        
+        if solution_files:
+            logger.info('Found %d solution files in %s', len(solution_files), solution_dir)
+            
+            # Compile all solutions that need compilation
+            for solution_file in solution_files:
+                if solution_file.suffix == '.cpp':
+                    # Compile C++ solution
+                    output_file = solution_dir / solution_file.stem
+                    compile_cmd = f'g++ -std=c++17 -O2 -o {output_file} {solution_file}'
+                    logger.info('Compiling %s...', solution_file)
+                    try:
+                        subprocess.run(compile_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        logger.info('Compilation successful')
+                    except subprocess.CalledProcessError as e:
+                        logger.error('Compilation failed: %s', e.stderr.decode())
+                        return 1
+                elif solution_file.suffix == '.java':
+                    # Compile Java solution
+                    compile_cmd = f'javac {solution_file}'
+                    logger.info('Compiling %s...', solution_file)
+                    try:
+                        subprocess.run(compile_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        logger.info('Compilation successful')
+                    except subprocess.CalledProcessError as e:
+                        logger.error('Compilation failed: %s', e.stderr.decode())
+                        return 1
+            
+            # Use the solution based on the specified language or priority order
+            if args.language:
+                ext_map = {'cpp': '.cpp', 'python': '.py', 'java': '.java'}
+                target_ext = ext_map.get(args.language, f'.{args.language}')
+                for solution_file in solution_files:
+                    if solution_file.suffix == target_ext:
+                        if target_ext == '.cpp':
+                            args.command = str(solution_dir / solution_file.stem)
+                        elif target_ext == '.py':
+                            args.command = f'python3 {solution_file}'
+                        elif target_ext == '.java':
+                            args.command = f'java -cp {solution_dir} {solution_file.stem}'
+                        logger.info('Using %s solution: %s', args.language, args.command)
+                        break
+            else:
+                # Priority: cpp > python > java
+                found = False
+                # First try C++
+                for solution_file in solution_files:
+                    if solution_file.suffix == '.cpp':
+                        args.command = str(solution_dir / solution_file.stem)
+                        logger.info('Using C++ solution: %s', args.command)
+                        found = True
+                        break
+                
+                # Then try Python
+                if not found:
+                    for solution_file in solution_files:
+                        if solution_file.suffix == '.py':
+                            args.command = f'python3 {solution_file}'
+                            logger.info('Using Python solution: %s', args.command)
+                            found = True
+                            break
+                
+                # Finally try Java
+                if not found:
+                    for solution_file in solution_files:
+                        if solution_file.suffix == '.java':
+                            args.command = f'java -cp {solution_dir} {solution_file.stem}'
+                            logger.info('Using Java solution: %s', args.command)
+                            found = True
+                            break
+    
     # list tests
     if not args.directory.exists():
         logger.error('no such directory: %s', args.directory)
         return 1
     tests = fmtutils.glob_with_format(args.directory, args.format)  # type: List[Tuple[pathlib.Path, pathlib.Path]]
     if not tests:
+        # Try to find tests in the old directory structure
+        old_directory = pathlib.Path('test')
+        if old_directory.exists():
+            logger.warning('No tests found in %s, trying old directory structure: %s', args.directory, old_directory)
+            tests = fmtutils.glob_with_format(old_directory, args.format)
+            if tests:
+                logger.info('Found tests in old directory structure: %s', old_directory)
+                args.directory = old_directory
+    
+    if not tests:
         logger.error('no tests found')
         return 1
     logger.info('found %d tests', len(tests))
 
+    # Check if the tests use the old .out extension instead of .ans
+    has_out_extension = False
+    for _, paths in tests:
+        if len(paths) >= 2 and paths[1].suffix == '.out':
+            has_out_extension = True
+            break
+    
+    if has_out_extension:
+        logger.warning('Found tests with .out extension. The new format uses .ans extension.')
+        
     # check wheather GNU time is available
     gnu_time = 'time'
     if platform.system() == 'Darwin':
@@ -333,7 +443,13 @@ def run(args: 'argparse.Namespace') -> int:
     history = []  # type: List[Dict[str, Any]]
     if args.jobs is None:
         for name, paths in tests:
-            history += [test_single_case(name, paths[0], paths[1] if len(paths) >= 2 else None, args=args)]
+            # Find the output file (could be .out or .ans)
+            output_path = None
+            for path in paths[1:]:
+                if path.suffix in ['.out', '.ans']:
+                    output_path = path
+                    break
+            history += [test_single_case(name, paths[0], output_path, args=args)]
     else:
         if os.name == 'nt':
             logger.warning("-j/--jobs option is unstable on Windows environmet")
@@ -341,7 +457,13 @@ def run(args: 'argparse.Namespace') -> int:
             lock = threading.Lock()
             futures = []  # type: List[concurrent.futures.Future]
             for name, paths in tests:
-                futures += [executor.submit(test_single_case, name, paths[0], paths[1] if len(paths) >= 2 else None, lock=lock, args=args)]
+                # Find the output file (could be .out or .ans)
+                output_path = None
+                for path in paths[1:]:
+                    if path.suffix in ['.out', '.ans']:
+                        output_path = path
+                        break
+                futures += [executor.submit(test_single_case, name, paths[0], output_path, lock=lock, args=args)]
             for future in futures:
                 history += [future.result()]
 
