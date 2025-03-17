@@ -20,8 +20,6 @@ import colorama
 import requests
 
 import onlinejudge_command.__about__ as version
-from onlinejudge import utils
-from onlinejudge.type import *
 
 logger = getLogger(__name__)
 
@@ -31,10 +29,38 @@ HINT = 'HINT: '
 SUCCESS = 'SUCCESS: '
 FAILURE = 'FAILURE: '
 
-user_data_dir = utils.user_data_dir
-user_cache_dir = utils.user_cache_dir
-default_cookie_path = utils.default_cookie_path
+# Define our own utility functions instead of importing from onlinejudge
+def user_data_dir() -> pathlib.Path:
+    """Returns a directory path for user-specific data files."""
+    if platform.system() == 'Windows':
+        return pathlib.Path(os.environ.get('APPDATA', os.path.expanduser('~\\AppData\\Roaming'))) / 'np-problem-tools'
+    elif platform.system() == 'Darwin':  # macOS
+        return pathlib.Path(os.path.expanduser('~/Library/Application Support/np-problem-tools'))
+    else:
+        return pathlib.Path(os.environ.get('XDG_DATA_HOME', os.path.expanduser('~/.local/share'))) / 'np-problem-tools'
 
+def user_cache_dir() -> pathlib.Path:
+    """Returns a directory path for user-specific cache files."""
+    if platform.system() == 'Windows':
+        return pathlib.Path(os.environ.get('LOCALAPPDATA', os.path.expanduser('~\\AppData\\Local'))) / 'np-problem-tools' / 'Cache'
+    elif platform.system() == 'Darwin':  # macOS
+        return pathlib.Path(os.path.expanduser('~/Library/Caches/np-problem-tools'))
+    else:
+        return pathlib.Path(os.environ.get('XDG_CACHE_HOME', os.path.expanduser('~/.cache'))) / 'np-problem-tools'
+
+default_cookie_path = user_data_dir() / 'cookie.jar'
+
+@contextlib.contextmanager
+def with_cookiejar(session: requests.Session, *, path: pathlib.Path) -> Iterator[requests.Session]:
+    """Add a cookiejar to a requests.Session and save it when the context is exited."""
+    session.cookies = http.cookiejar.LWPCookieJar(str(path))
+    if path.exists():
+        logger.info('load cookie from: %s', path)
+        session.cookies.load(ignore_discard=True)
+    yield session
+    logger.info('save cookie to: %s', path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    session.cookies.save(ignore_discard=True)
 
 @contextlib.contextmanager
 def new_session_with_our_user_agent(*, path: pathlib.Path) -> Iterator[requests.Session]:
@@ -42,7 +68,7 @@ def new_session_with_our_user_agent(*, path: pathlib.Path) -> Iterator[requests.
     session.headers['User-Agent'] = '{}/{} (+{})'.format(version.__package_name__, version.__version__, version.__url__)
     logger.debug('User-Agent: %s', session.headers['User-Agent'])
     try:
-        with utils.with_cookiejar(session, path=path) as session:
+        with with_cookiejar(session, path=path) as session:
             yield session
     except http.cookiejar.LoadError:
         logger.info(HINT + 'You can delete the broken cookie.jar file: %s', str(path))

@@ -2,102 +2,195 @@ import argparse
 import glob
 import os
 import pathlib
-import subprocess
 import sys
-from logging import getLogger
 from typing import *
 
 import onlinejudge_command.utils as utils
 
-logger = getLogger(__name__)
+# 尝试导入rich库，如果不可用则使用基本输出
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich import box
+    HAS_RICH = True
+except ImportError:
+    HAS_RICH = False
 
 
-def add_subparser(subparsers: argparse.Action) -> None:
-    subparser = subparsers.add_parser(
-        'validator',
-        aliases=['v'],
-        help='validate test cases using validator.py',
-        formatter_class=argparse.RawTextHelpFormatter,
-        epilog='''\
+def add_subparser(subparsers: argparse.ArgumentParser) -> None:
+    subparser = subparsers.add_parser('validator', aliases=['v'], help='validate input files', formatter_class=argparse.RawTextHelpFormatter, epilog='''\
+validate input files using the specified validator
+
 example:
-    $ np v                  # validate all test cases in the test directory
-    $ np v --test=test1.in  # validate a specific test case
-''',
-    )
-    subparser.add_argument('--dir', '-d', type=pathlib.Path, default=pathlib.Path('.'), help='specify the directory containing validator.py and test directory')
-    subparser.add_argument('--test', '-t', type=str, help='specify a specific test file to validate (relative to test directory)')
-    subparser.add_argument('--validator', '-v', type=pathlib.Path, help='specify the validator script (default: validator.py in the current directory)')
+    $ np validator
+    $ np validator --validator ./input_validators/validate.py
+    $ np validator --only-sample  # 只检测data/sample目录
+    $ np validator --only-secret  # 只检测data/secret目录
+''')
+    subparser.add_argument('--validator', default='./input_validators/validate.py', help='validator program (default: "./input_validators/validate.py")')
+    subparser.add_argument('--silent', action='store_true', help='silent mode')
+    subparser.add_argument('--only-sample', action='store_true', help='only validate files in the data/sample directory')
+    subparser.add_argument('--only-secret', action='store_true', help='only validate files in the data/secret directory')
+    subparser.set_defaults(func=run)
 
 
 def run(args: argparse.Namespace) -> bool:
-    # Determine the validator path
-    validator_path = args.validator if args.validator else args.dir / 'validator.py'
+    # find input files
+    input_paths: List[pathlib.Path] = []
     
-    # Convert to absolute path for better error messages
-    validator_path = validator_path.resolve()
+    # Check data/sample directory if not --only-secret
+    if not args.only_secret:
+        sample_dir = pathlib.Path('data/sample')
+        if sample_dir.exists() and sample_dir.is_dir():
+            sample_files = sorted(sample_dir.glob('*.in'))
+            input_paths.extend(sample_files)
+            utils.logger.info('Found {} test files in data/sample directory'.format(len(sample_files)))
+        else:
+            utils.logger.warning('data/sample directory doesn\'t exist')
     
-    if not validator_path.exists():
-        logger.error('validator script not found: %s', validator_path)
+    # Check data/secret directory if not --only-sample
+    if not args.only_sample:
+        secret_dir = pathlib.Path('data/secret')
+        if secret_dir.exists() and secret_dir.is_dir():
+            secret_files = sorted(secret_dir.glob('*.in'))
+            input_paths.extend(secret_files)
+            utils.logger.info('Found {} test files in data/secret directory'.format(len(secret_files)))
+        else:
+            utils.logger.warning('data/secret directory doesn\'t exist')
+    
+    if not input_paths:
+        utils.logger.error('no input files found')
+        return False
+    
+    # validate input files
+    validator = pathlib.Path(args.validator)
+    if not validator.exists():
+        utils.logger.error('validator: {} doesn\'t exist'.format(validator))
         return False
     
     # Make sure the validator is executable
-    if not os.access(validator_path, os.X_OK):
-        logger.warning('validator script is not executable, making it executable: %s', validator_path)
-        os.chmod(validator_path, 0o755)
+    if not os.access(validator, os.X_OK):
+        utils.logger.warning('validator script is not executable, making it executable: {}'.format(validator))
+        os.chmod(validator, 0o755)
     
-    # Determine the test directory
-    test_dir = args.dir / 'test'
-    if not test_dir.exists():
-        logger.error('test directory not found: %s', test_dir)
-        return False
+    valid_count = 0
+    invalid_count = 0
     
-    # Get the list of test files to validate
-    if args.test:
-        test_path = test_dir / args.test
-        if not test_path.exists():
-            logger.error('test file not found: %s', test_path)
-            return False
-        test_files = [test_path]
-    else:
-        test_files = sorted(test_dir.glob('*.in'))
-        if not test_files:
-            logger.warning('no test files found in: %s', test_dir)
-            return True
+    # Store validation results for table display
+    validation_results = []
     
-    # Validate each test file
-    success_count = 0
-    failure_count = 0
-    
-    for test_file in test_files:
-        logger.info('validating: %s', test_file)
+    for path in input_paths:
+        utils.logger.info('validating: {}'.format(path))
         
-        try:
-            # Run the validator on the test file
-            with open(test_file, 'r') as f:
-                input_data = f.read()
-                
-            process = subprocess.run(
-                [str(validator_path)],
-                input=input_data,
-                text=True,
-                capture_output=True,
-                check=False
-            )
+        # Run the validator with python interpreter
+        command = ["python3", str(validator)]
+        with open(str(path)) as inf:
+            result = utils.subprocess.run(command, stdin=inf, capture_output=True, text=True, check=False)
+        
+        is_valid = result.returncode == 0
+        error_message = ""
+        
+        if is_valid:
+            utils.logger.info('valid: {}'.format(path))
+            valid_count += 1
+        else:
+            # 收集错误信息
+            if result.stderr:
+                error_message = result.stderr.strip()
+                utils.logger.error(error_message)
+            elif result.stdout:
+                error_message = result.stdout.strip()
+                utils.logger.error(error_message)
             
-            if process.returncode == 0:
-                logger.info('[SUCCESS] %s is valid', test_file)
-                success_count += 1
-            else:
-                logger.error('[FAILURE] %s is invalid', test_file)
-                if process.stderr:
-                    logger.error('Error message: %s', process.stderr.strip())
-                failure_count += 1
+            utils.logger.error('invalid: {}'.format(path))
+            invalid_count += 1
         
-        except Exception as e:
-            logger.error('[ERROR] Failed to validate %s: %s', test_file, str(e))
-            failure_count += 1
+        validation_results.append({
+            "file": str(path),
+            "is_valid": is_valid,
+            "error": error_message
+        })
     
     # Print summary
-    logger.info('Validation complete: %d valid, %d invalid', success_count, failure_count)
+    utils.logger.info('validation summary: {} valid file(s) and {} invalid file(s)'.format(valid_count, invalid_count))
     
-    return failure_count == 0 
+    # Print table visualization
+    if validation_results:
+        if HAS_RICH:
+            print_rich_table(validation_results)
+        else:
+            print_basic_table(validation_results)
+    
+    return invalid_count == 0
+
+
+def print_rich_table(results: List[Dict[str, Any]]) -> None:
+    """Print validation results in a rich table format."""
+    console = Console()
+    
+    table = Table(title="Validation Results", box=box.ROUNDED)
+    
+    # Add columns
+    table.add_column("File", style="cyan")
+    table.add_column("Status", style="cyan")
+    table.add_column("Error Message", style="cyan")
+    
+    # Add rows
+    for result in results:
+        file_name = result["file"]
+        status = "✓ Valid" if result["is_valid"] else "✗ Invalid"
+        status_style = "green" if result["is_valid"] else "red"
+        error = result.get("error", "")
+        
+        # Truncate error message if too long
+        if len(error) > 50:
+            error = error[:47] + "..."
+        
+        table.add_row(
+            file_name,
+            status,
+            error,
+            style=None if result["is_valid"] else "red"
+        )
+    
+    # Print the table
+    console.print(table)
+
+
+def print_basic_table(results: List[Dict[str, Any]]) -> None:
+    """Print validation results in a basic table format."""
+    # Find the maximum width for each column
+    max_file_width = max(len(result["file"]) for result in results)
+    max_file_width = max(max_file_width, len("File"))
+    max_status_width = max(len("✓ Valid"), len("✗ Invalid"))
+    
+    # 计算错误消息的最大宽度，但限制在合理范围内
+    error_messages = [result.get("error", "") for result in results]
+    max_error_width = max(len(msg) for msg in error_messages) if error_messages else 0
+    max_error_width = max(max_error_width, len("Error Message"))
+    max_error_width = min(max_error_width, 50)  # 限制错误消息宽度
+    
+    # Calculate total table width
+    total_width = max_file_width + max_status_width + max_error_width + 10  # 10 for padding and separators
+    
+    # Print table header
+    utils.logger.info("╭" + "─" * total_width + "╮")
+    utils.logger.info("│ Validation Results" + " " * (total_width - 19) + "│")
+    utils.logger.info("├" + "─" * max_file_width + "┬" + "─" * max_status_width + "┬" + "─" * max_error_width + "┤")
+    utils.logger.info("│ " + "File".ljust(max_file_width - 1) + "│ " + "Status".ljust(max_status_width - 1) + "│ " + "Error Message".ljust(max_error_width - 1) + "│")
+    utils.logger.info("├" + "─" * max_file_width + "┼" + "─" * max_status_width + "┼" + "─" * max_error_width + "┤")
+    
+    # Print table rows
+    for result in results:
+        file_name = result["file"]
+        status = "✓ Valid" if result["is_valid"] else "✗ Invalid"
+        error = result.get("error", "")
+        
+        # Truncate error message if too long
+        if len(error) > max_error_width - 1:
+            error = error[:max_error_width - 4] + "..."
+        
+        utils.logger.info("│ " + file_name.ljust(max_file_width - 1) + "│ " + status.ljust(max_status_width - 1) + "│ " + error.ljust(max_error_width - 1) + "│")
+    
+    # Print table footer
+    utils.logger.info("╰" + "─" * max_file_width + "┴" + "─" * max_status_width + "┴" + "─" * max_error_width + "╯") 

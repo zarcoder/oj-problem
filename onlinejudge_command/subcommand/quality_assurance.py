@@ -75,7 +75,10 @@ def run(args: argparse.Namespace) -> bool:
         validator_args = argparse.Namespace()
         validator_args.dir = args.dir
         validator_args.test = None
-        validator_args.validator = None
+        validator_args.validator = './input_validators/validate.py'
+        validator_args.only_sample = False
+        validator_args.only_secret = False
+        validator_args.silent = False
         
         # Run validator
         validator_success = validator.run(validator_args)
@@ -119,6 +122,7 @@ def run(args: argparse.Namespace) -> bool:
         test_args.gnu_time = None
         test_args.judge_command = None
         test_args.select = None
+        test_args.language = language
         
         # Prepare std solution
         vis.print_info(f"Preparing std solution")
