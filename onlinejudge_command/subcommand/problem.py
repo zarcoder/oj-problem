@@ -2,6 +2,9 @@ import argparse
 import os
 import pathlib
 import sys
+import yaml
+import re
+from datetime import datetime
 from logging import getLogger
 from typing import *
 
@@ -10,44 +13,511 @@ import onlinejudge_command.utils as utils
 
 logger = getLogger(__name__)
 
+# 问题文件夹结构定义
+PROBLEM_STRUCTURE = {
+    'problem.yaml': {
+        'required': True,
+        'description': 'Problem Metadata',
+        'type': 'file',
+        'content': {
+            'problem_format_version': 'legacy',
+            'name': '',
+            'uuid': '',
+            'author': '',
+            'source': '',
+            'source_url': '',
+            'license': 'unknown',
+            'rights_owner': '',
+            'limits': {
+                'time_multiplier': 5.0,
+                'time_safety_margin': 2.0,
+                'memory': 2048,          # MiB
+                'output': 8,             # MiB
+                'code': 128,             # KiB
+                'compilation_time': 60,  # seconds
+                'compilation_memory': 2048,  # MiB
+                'validation_time': 60,   # seconds
+                'validation_memory': 2048,  # MiB
+                'validation_output': 8,  # MiB
+            },
+            'validation': 'default',
+            'validator_flags': '',
+            'keywords': '',
+            'created_at': '',           # 自动填充当前日期
+        }
+    },
+    'statement/': {
+        'required': True,
+        'description': 'Problem Statements',
+        'type': 'directory',
+        'subdirs': {
+            'problem.md': {
+                'type': 'file',
+                'content': '# Problem Title\n\n## Description\n\n## Input\n\n## Output\n\n## Examples\n\n## Notes\n'
+            }
+        }
+    },
+    'attachments/': {
+        'required': False,
+        'description': 'Attachments',
+        'type': 'directory'
+    },
+    'solution/': {
+        'required': False,
+        'description': 'Solution Description',
+        'type': 'directory',
+        'subdirs': {
+            'solution.md': {
+                'type': 'file',
+                'content': '# Solution\n\n## Approach\n\n## Complexity\n\n- Time Complexity: \n- Space Complexity: \n'
+            },
+            'accepted/': {
+                'type': 'directory'
+            }
+        }
+    },
+    'data/': {
+        'required': True,
+        'description': 'Test Data',
+        'type': 'directory',
+        'subdirs': {
+            'sample/': {
+                'required': False,
+                'type': 'directory'
+            },
+            'secret/': {
+                'required': True,
+                'type': 'directory'
+            },
+            'invalid_input/': {
+                'required': False,
+                'type': 'directory'
+            },
+            'invalid_output/': {
+                'required': False,
+                'type': 'directory'
+            },
+            'valid_output/': {
+                'required': False,
+                'type': 'directory'
+            }
+        }
+    },
+    'generators/': {
+        'required': False,
+        'description': 'Generators',
+        'type': 'directory'
+    },
+    'include/': {
+        'required': False,
+        'description': 'Included Files',
+        'type': 'directory'
+    },
+    'submissions/': {
+        'required': True,
+        'description': 'Example Submissions',
+        'type': 'directory',
+        'subdirs': {
+            'accepted/': {
+                'type': 'directory'
+            }
+        }
+    },
+    'input_validators/': {
+        'required': True,
+        'description': 'Input Validators',
+        'type': 'directory'
+    },
+    'static_validator/': {
+        'required': False,
+        'description': 'Static Validator',
+        'type': 'directory'
+    },
+    'output_validator/': {
+        'required': False,
+        'description': 'Output Validator',
+        'type': 'directory'
+    },
+    'input_visualizer/': {
+        'required': False,
+        'description': 'Input Visualizer',
+        'type': 'directory'
+    },
+    'output_visualizer/': {
+        'required': False,
+        'description': 'Output Visualizer',
+        'type': 'directory'
+    }
+}
+
+def extract_examples_from_md(md_file_path):
+    """从markdown文件中提取样例输入和输出"""
+    examples = []
+    
+    try:
+        with open(md_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 查找Examples部分
+        examples_section = re.search(r'## Examples\s+(.+?)(?=\n##|\Z)', content, re.DOTALL)
+        if not examples_section:
+            logger.warning("没有找到Examples部分")
+            return []
+        
+        examples_text = examples_section.group(1)
+        
+        # 查找所有输入和输出块
+        input_blocks = re.findall(r'```(?:input)?\s*\n(.*?)\n```', examples_text, re.DOTALL)
+        output_blocks = re.findall(r'```(?:output)?\s*\n(.*?)\n```', examples_text, re.DOTALL)
+        
+        # 如果没有找到明确标记的输入输出块，尝试使用一般的代码块
+        if not input_blocks or not output_blocks:
+            code_blocks = re.findall(r'```\s*\n(.*?)\n```', examples_text, re.DOTALL)
+            if len(code_blocks) >= 2 and len(code_blocks) % 2 == 0:
+                # 假设偶数块是输入，奇数块是输出
+                input_blocks = code_blocks[::2]
+                output_blocks = code_blocks[1::2]
+        
+        # 确保输入和输出块数量相同
+        if len(input_blocks) != len(output_blocks):
+            logger.warning(f"输入块和输出块数量不匹配: {len(input_blocks)} 输入, {len(output_blocks)} 输出")
+            return []
+        
+        # 创建样例列表
+        for i, (inp, out) in enumerate(zip(input_blocks, output_blocks)):
+            examples.append({
+                'input': inp.strip(),
+                'output': out.strip(),
+                'index': i + 1
+            })
+        
+    except Exception as e:
+        logger.error(f"提取样例时出错: {str(e)}")
+    
+    return examples
+
+def generate_sample_files(problem_dir):
+    """根据problem.md生成样例文件"""
+    # 找到problem.md文件
+    problem_md_path = problem_dir / 'statement' / 'problem.md'
+    if not problem_md_path.exists():
+        logger.error(f"找不到 {problem_md_path}")
+        return False
+    
+    # 提取样例
+    examples = extract_examples_from_md(problem_md_path)
+    if not examples:
+        logger.warning("无法从problem.md提取样例")
+        return False
+    
+    # 确保sample目录存在
+    sample_dir = problem_dir / 'data' / 'sample'
+    sample_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 写入样例文件
+    sample_count = 0
+    for example in examples:
+        input_file = sample_dir / f"sample{example['index']}.in"
+        output_file = sample_dir / f"sample{example['index']}.ans"
+        
+        with open(input_file, 'w', encoding='utf-8') as f:
+            f.write(example['input'])
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(example['output'])
+        
+        sample_count += 1
+        logger.info(f"创建样例 {sample_count}: {input_file.name} 和 {output_file.name}")
+    
+    logger.info(f"成功从problem.md创建了 {sample_count} 个样例")
+    return True
+
+def generate_validator(problem_dir):
+    """生成输入验证器"""
+    validator_dir = problem_dir / 'input_validators'
+    validator_dir.mkdir(parents=True, exist_ok=True)
+    
+    validator_path = validator_dir / 'validate.py'
+    
+    # 如果验证器已存在，则不替换
+    if validator_path.exists():
+        logger.info(f"验证器已存在: {validator_path}")
+        return
+    
+    # 创建一个简单的通用验证器
+    with open(validator_path, 'w', encoding='utf-8') as f:
+        f.write('''#!/usr/bin/env python3
+import sys
+import re
+
+def main():
+    """
+    基本输入验证器
+    每行检查长度，总行数和非打印字符
+    可根据问题要求修改
+    """
+    line_count = 0
+    max_line_length = 100000  # 可配置
+    max_lines = 100000  # 可配置
+    
+    for line in sys.stdin:
+        line_count += 1
+        
+        # 检查行数是否过多
+        if line_count > max_lines:
+            print(f"错误: 行数超过限制 {max_lines}", file=sys.stderr)
+            return 1
+        
+        # 检查行长度
+        if len(line) > max_line_length:
+            print(f"错误: 第 {line_count} 行长度 ({len(line)}) 超过限制 {max_line_length}", file=sys.stderr)
+            return 1
+        
+        # 检查非法字符
+        if re.search(r'[^\x20-\x7E\n]', line):
+            print(f"错误: 第 {line_count} 行包含非法字符", file=sys.stderr)
+            return 1
+    
+    # 检查是否有输入
+    if line_count == 0:
+        print("错误: 没有输入", file=sys.stderr)
+        return 1
+    
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+''')
+    
+    # 设置为可执行文件
+    os.chmod(validator_path, 0o755)
+    logger.info(f"创建基本验证器: {validator_path}")
+
+def generate_solution(problem_dir):
+    """生成解决方案模板"""
+    solution_dir = problem_dir / 'solution' / 'accepted'
+    solution_dir.mkdir(parents=True, exist_ok=True)
+    
+    cpp_solution_path = solution_dir / 'solution.cpp'
+    py_solution_path = solution_dir / 'solution.py'
+    
+    # 如果解决方案已存在，则不替换
+    if cpp_solution_path.exists() or py_solution_path.exists():
+        logger.info(f"解决方案已存在")
+        return
+    
+    # 创建C++解决方案模板
+    with open(cpp_solution_path, 'w', encoding='utf-8') as f:
+        f.write('''#include <iostream>
+#include <vector>
+#include <string>
+#include <algorithm>
+using namespace std;
+
+void solve() {
+    // 在此实现解决方案
+}
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+    
+    // 取消注释以处理多个测试用例
+    // int t;
+    // cin >> t;
+    // while (t--) {
+        solve();
+    // }
+    
+    return 0;
+}
+''')
+    
+    # 创建Python解决方案模板
+    with open(py_solution_path, 'w', encoding='utf-8') as f:
+        f.write('''#!/usr/bin/env python3
+
+def solve():
+    # 在此实现解决方案
+    pass
+
+if __name__ == "__main__":
+    # 取消注释以处理多个测试用例
+    # t = int(input())
+    # for _ in range(t):
+    #     solve()
+    solve()
+''')
+    
+    logger.info(f"创建解决方案模板: {cpp_solution_path} 和 {py_solution_path}")
+
+def create_structure(base_path, structure, problem_name=""):
+    """递归创建问题结构"""
+    for name, info in structure.items():
+        path = os.path.join(base_path, name)
+        
+        if info.get('type') == 'directory':
+            os.makedirs(path, exist_ok=True)
+            logger.info(f"Created directory: {path}")
+            
+            # 创建子目录或子文件
+            if 'subdirs' in info:
+                create_structure(path, info['subdirs'], problem_name)
+                
+        elif info.get('type') == 'file':
+            if name == 'problem.yaml':
+                # 特殊处理 problem.yaml
+                content = info.get('content', {}).copy()
+                content['name'] = problem_name
+                content['created_at'] = datetime.now().strftime("%Y-%m-%d")
+                
+                with open(path, 'w', encoding='utf-8') as f:
+                    # 使用多行字符串格式化YAML
+                    f.write("# Problem configuration\n")
+                    f.write(f"problem_format_version: {content.get('problem_format_version', 'legacy')}\n")
+                    f.write(f"name: {content['name']}\n")
+                    f.write(f"uuid: {content.get('uuid', '')}\n")
+                    f.write(f"author: {content.get('author', '')}\n")
+                    f.write(f"source: {content.get('source', '')}\n")
+                    f.write(f"source_url: {content.get('source_url', '')}\n")
+                    f.write(f"license: {content.get('license', 'unknown')}\n")
+                    f.write(f"rights_owner: {content.get('rights_owner', '')}\n")
+                    f.write("\n# Limits\n")
+                    f.write("limits:\n")
+                    
+                    # 处理limits部分
+                    limits = content.get('limits', {})
+                    f.write(f"  time_multiplier: {limits.get('time_multiplier', 5.0)}\n")
+                    f.write(f"  time_safety_margin: {limits.get('time_safety_margin', 2.0)}\n")
+                    f.write(f"  memory: {limits.get('memory', 2048)}\n")
+                    f.write(f"  output: {limits.get('output', 8)}\n")
+                    f.write(f"  code: {limits.get('code', 128)}\n")
+                    f.write(f"  compilation_time: {limits.get('compilation_time', 60)}\n")
+                    f.write(f"  compilation_memory: {limits.get('compilation_memory', 2048)}\n")
+                    f.write(f"  validation_time: {limits.get('validation_time', 60)}\n")
+                    f.write(f"  validation_memory: {limits.get('validation_memory', 2048)}\n")
+                    f.write(f"  validation_output: {limits.get('validation_output', 8)}\n")
+                    
+                    f.write("\n# Validation\n")
+                    f.write(f"validation: {content.get('validation', 'default')}\n")
+                    f.write(f"validator_flags: {content.get('validator_flags', '')}\n")
+                    f.write(f"keywords: {content.get('keywords', '')}\n")
+            else:
+                # 处理其他文件
+                with open(path, 'w', encoding='utf-8') as f:
+                    content = info.get('content', '')
+                    if isinstance(content, str) and name == 'problem.md':
+                        # 替换标题为问题名称
+                        content = content.replace('Problem Title', problem_name)
+                    f.write(content)
+            
+            logger.info(f"Created file: {path}")
+
+
+def run(args: argparse.Namespace) -> bool:
+    """创建问题结构的主函数"""
+    # 检查是否使用新方式创建问题结构
+    if hasattr(args, 'name') and args.name:
+        # 新的标准目录结构方式
+        problem_name = args.name
+        
+        # 创建问题目录
+        if hasattr(args, 'dir') and args.dir:
+            if isinstance(args.dir, pathlib.Path):
+                problem_dir = args.dir
+            else:
+                problem_dir = pathlib.Path(args.dir)
+        else:
+            problem_dir = pathlib.Path('.')
+        
+        # 如果不是直接在指定目录创建，创建一个包含问题名的子目录
+        if not hasattr(args, 'direct') or not args.direct:
+            problem_dir = problem_dir / problem_name
+        
+        os.makedirs(problem_dir, exist_ok=True)
+        logger.info(f"Creating problem structure for: {problem_name}")
+        
+        # 创建问题文件夹结构
+        create_structure(problem_dir, PROBLEM_STRUCTURE, problem_name)
+        
+        logger.info(f"\nProblem structure created successfully at: {problem_dir}")
+        logger.info("\nRequired directories/files are:")
+        for name, info in PROBLEM_STRUCTURE.items():
+            if info.get('required', False):
+                logger.info(f"  - {name}: {info.get('description', '')}")
+        
+        # 生成额外的文件
+        if not args.no_init:
+            # 生成样例文件
+            generate_sample_files(problem_dir)
+            
+            # 生成验证器
+            generate_validator(problem_dir)
+            
+            # 生成解决方案模板
+            generate_solution(problem_dir)
+            
+            logger.info("\n问题初始化完成，已生成必要文件结构")
+            
+        else:
+            # 仅创建最基本的样例文件
+            samples_dir = problem_dir / 'data' / 'sample'
+            with open(samples_dir / 'sample1.in', 'w', encoding='utf-8') as f:
+                f.write('# Sample 1 input\n')
+            with open(samples_dir / 'sample1.ans', 'w', encoding='utf-8') as f:
+                f.write('# Sample 1 output\n')
+            
+            logger.info("\nAdded basic sample test files in data/sample/")
+        
+        logger.info("\nNow you can start working on your problem!")
+        
+        return True
+    else:
+        # 旧的方式
+        # Load config
+        cfg = config.load_config()
+        
+        # Determine language
+        language = args.language
+        if language is None:
+            language = cfg.get('default_language', 'cpp')
+        
+        # Create the directory if it doesn't exist
+        if not args.dir.exists():
+            os.makedirs(args.dir)
+            logger.info('created directory: %s', args.dir)
+        
+        # Create problem with new format (now the default)
+        return _create_problem(args, cfg, language)
+
 
 def add_subparser(subparsers: argparse.Action) -> None:
     subparser = subparsers.add_parser(
         'problem',
         aliases=['p'],
-        help='create problem files for problem setting',
+        help='create problem directory structure',
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='''\
 example:
-    $ np p                  # create problem files in the current directory
-    $ np p --dir=problem1   # create problem files in the problem1 directory
-    $ np p --language=python  # create problem files using Python templates
+    $ np p problem1                  # create problem files with name problem1
+    $ np p problem1 --dir=contests/abc123   # create problem1 files in the contests/abc123 directory
+    $ np p problem1 --direct         # create problem files directly in the specified directory
+    $ np p problem1 --no-init        # create basic structure without generating files from problem.md
+    $ np p --dir=problem1 --language=python  # create old-style problem files using Python templates
 ''',
     )
-    subparser.add_argument('--dir', '-d', type=pathlib.Path, default=pathlib.Path('.'), help='specify the directory to create problem files')
-    subparser.add_argument('--template-std', type=pathlib.Path, help='specify the template file for std.cpp')
-    subparser.add_argument('--template-force', type=pathlib.Path, help='specify the template file for force.cpp')
-    subparser.add_argument('--template-validator', type=pathlib.Path, help='specify the template file for validator.py')
-    subparser.add_argument('--template-md', type=pathlib.Path, help='specify the template file for problem.md')
-    subparser.add_argument('--language', '-l', type=str, help='specify the language (cpp, python, java)')
-
-
-def run(args: argparse.Namespace) -> bool:
-    # Load config
-    cfg = config.load_config()
+    group = subparser.add_argument_group('Standard Problem Structure Options')
+    group.add_argument('name', nargs='?', help='name of the problem')
+    group.add_argument('--dir', '-d', help='directory to create problem in (default: current directory)')
+    group.add_argument('--direct', action='store_true', help='create files directly in the specified directory without a subdirectory')
+    group.add_argument('--no-init', action='store_true', help='do not initialize problem files (samples from problem.md, validator, solutions)')
     
-    # Determine language
-    language = args.language
-    if language is None:
-        language = cfg.get('default_language', 'cpp')
-    
-    # Create the directory if it doesn't exist
-    if not args.dir.exists():
-        os.makedirs(args.dir)
-        logger.info('created directory: %s', args.dir)
-    
-    # Create problem with new format (now the default)
-    return _create_problem(args, cfg, language)
+    legacy_group = subparser.add_argument_group('Legacy Options')
+    legacy_group.add_argument('--template-std', type=pathlib.Path, help='specify the template file for std.cpp')
+    legacy_group.add_argument('--template-force', type=pathlib.Path, help='specify the template file for force.cpp')
+    legacy_group.add_argument('--template-validator', type=pathlib.Path, help='specify the template file for validator.py')
+    legacy_group.add_argument('--template-md', type=pathlib.Path, help='specify the template file for problem.md')
+    legacy_group.add_argument('--language', '-l', type=str, help='specify the language (cpp, python, java)')
 
 
 def _create_problem(args: argparse.Namespace, cfg: Dict[str, Any], language: str) -> bool:
@@ -250,7 +720,7 @@ int main() {
 #!/usr/bin/env python3
 
 def solve():
-    # Your solution code here
+    // Your solution code here
     pass
 
 if __name__ == "__main__":
@@ -290,7 +760,7 @@ int main() {
 #!/usr/bin/env python3
 
 def solve_brute_force():
-    # Your brute force solution code here
+    // Your brute force solution code here
     pass
 
 if __name__ == "__main__":
@@ -322,16 +792,16 @@ def validate_input(input_data):
     """
     lines = input_data.strip().split('\\n')
     
-    # Add your validation logic here
-    # Example:
-    # if len(lines) < 1:
-    #     return False
-    # try:
-    #     n = int(lines[0])
-    #     if not (1 <= n <= 100000):
-    #         return False
-    # except ValueError:
-    #     return False
+    // Add your validation logic here
+    // Example:
+    // if len(lines) < 1:
+    //     return False
+    // try:
+    //     n = int(lines[0])
+    //     if not (1 <= n <= 100000):
+    //         return False
+    // except ValueError:
+    //     return False
     
     return True
 
@@ -385,25 +855,32 @@ Additional notes go here.
     elif template_type == 'problem_yaml':
         return '''\
 # Problem configuration
+problem_format_version: legacy
 name: Problem Name
+uuid: 
 author: Author Name
 source: Source of the problem
-license: License information
-rights_owner: Rights owner
+source_url: 
+license: unknown
+rights_owner: 
 
 # Limits
 limits:
-  time_multiplier: 1
-  time_safety_margin: 2
-  memory: 1024
-  output: 16
+  time_multiplier: 5.0
+  time_safety_margin: 2.0
+  memory: 2048
+  output: 8
+  code: 128
   compilation_time: 60
+  compilation_memory: 2048
   validation_time: 60
-  validation_memory: 1024
-  validation_output: 16
+  validation_memory: 2048
+  validation_output: 8
 
 # Validation
-validation: custom
+validation: default
+validator_flags: 
+keywords: 
 '''
 
     elif template_type == 'problem_tex':

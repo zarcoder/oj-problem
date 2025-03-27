@@ -30,7 +30,7 @@ format string for --format:
   (both %s and %e are required.)
 
 tips:
-  There is a feature to use special judges. See https://github.com/zarcoder/np-problem-tools/blob/master/docs/getting-started.md#test-for-problems-with-special-judge for details.
+  There is a feature to use special judges. See https://github.com/zarcoder/np-problem-tools/ details.
 
   You can do similar things with shell
     e.g. $ for f in data/sample/*.in ; do echo $f ; ./a.out < $f | diff - ${f%.in}.ans ; done
@@ -38,12 +38,12 @@ tips:
     subparser.add_argument('-c', '--command', default=utils.get_default_command(), help='your solution to be tested. (default: "{}")'.format(utils.get_default_command()))
     subparser.add_argument('-f', '--format', default='%s.%e', help='a format string to recognize the relationship of test cases. (default: "%%s.%%e")')
     subparser.add_argument('-d', '--directory', type=pathlib.Path, default=pathlib.Path('data/sample'), help='a directory name for test cases (default: data/sample/)')
+    subparser.add_argument('-s', '--secret', action='store_true', help='also test against secret test cases in data/secret/')
     subparser.add_argument('-m', '--compare-mode', choices=[mode.value for mode in CompareMode], default=CompareMode.CRLF_INSENSITIVE_EXACT_MATCH.value, help='mode to compare outputs. The default behavoir is exact-match to ensure that you always get AC on remote judge servers when you got AC on local tests for the same cases.  (default: crlf-insensitive-exact-match)')
     subparser.add_argument('-M', '--display-mode', choices=[mode.value for mode in DisplayMode], default=DisplayMode.SUMMARY.value, help='mode to display outputs  (default: summary)')
     subparser.add_argument('-S', '--ignore-spaces', dest='compare_mode', action='store_const', const=CompareMode.IGNORE_SPACES.value, help="ignore spaces to compare outputs, but doesn't ignore newlines  (equivalent to --compare-mode=ignore-spaces")
     subparser.add_argument('-N', '--ignore-spaces-and-newlines', dest='compare_mode', action='store_const', const=CompareMode.IGNORE_SPACES_AND_NEWLINES.value, help='ignore spaces and newlines to compare outputs  (equivalent to --compare-mode=ignore-spaces-and-newlines')
     subparser.add_argument('-D', '--diff', dest='display_mode', action='store_const', const=DisplayMode.DIFF.value, help='display the diff  (equivalent to --display-mode=diff)')
-    subparser.add_argument('-s', '--silent', action='store_true', help='don\'t report output and correct answer even if not AC  (for --mode all)')
     subparser.add_argument('-e', '--error', type=float, help='check as floating point number: correct if its absolute or relative error doesn\'t exceed it')
     subparser.add_argument('-t', '--tle', type=float, help='set the time limit (in second) (default: inf)')
     subparser.add_argument('--mle', type=float, help='set the memory limit (in megabyte) (default: inf)')
@@ -58,6 +58,12 @@ tips:
     subparser.add_argument('--judge-command', dest='judge', default=None, help='specify judge command instead of default diff judge. The given command (e.g. `./judge`) will be called as `$ ./judge input.txt actual-output.txt expected-output.ans` and should return the result with the exit code of its `main` function.')
     subparser.add_argument('--language', '-l', type=str, choices=['cpp', 'python', 'java'], help='specify the language to use for testing (default: auto-detect)')
     subparser.add_argument('test', nargs='*', type=pathlib.Path, help='paths of test cases. (if empty: globbed from --format)')
+    
+    # Solution directory options
+    solution_group = subparser.add_argument_group('Solution Options')
+    solution_group.add_argument('--solution-dir', type=pathlib.Path, default=pathlib.Path('solution/accepted'), help='directory containing solution files (default: solution/accepted/)')
+    solution_group.add_argument('--solution-file', type=pathlib.Path, help='specific solution file to test')
+    subparser.add_argument('--silent', action='store_true', help='don\'t report output and correct answer even if not AC  (for --mode all)')
 
 
 MEMORY_WARNING = 500  # megabyte
@@ -309,164 +315,138 @@ def check_gnu_time(gnu_time: str) -> bool:
     return False
 
 
-def run(args: 'argparse.Namespace') -> int:
-    # Check if we should use solution/accepted directory
-    solution_dir = pathlib.Path('solution/accepted')
-    if solution_dir.exists():
-        # Find all solution files in the directory
-        solution_files = []
+def run(args: argparse.Namespace) -> int:
+    # 查找命令行指定的solution文件
+    language = args.language
+    solution_command = args.command
+    
+    # 如果提供了特定的solution文件，使用它
+    if args.solution_file:
+        if not args.solution_file.exists():
+            logger.error('Solution file not found: %s', args.solution_file)
+            return 1
         
-        # If language is specified, only look for files with that extension
-        if args.language:
-            ext_map = {'cpp': 'cpp', 'python': 'py', 'java': 'java'}
-            ext = ext_map.get(args.language, args.language)
-            solution_files.extend(list(solution_dir.glob(f'*.{ext}')))
-            if not solution_files:
-                logger.error('No solution files found with extension .%s in %s', ext, solution_dir)
-                return 1
+        solution_command = get_command_for_file(args.solution_file, language)
+        logger.info('Testing solution file: %s', args.solution_file)
+        logger.info('Command: %s', solution_command)
+    # 否则，查找solution目录中的所有解决方案
+    elif args.solution_dir.exists():
+        logger.info('Looking for solutions in: %s', args.solution_dir)
+        solution_files = list(args.solution_dir.glob('*.*'))
+        
+        if not solution_files:
+            logger.warning('No solution files found in %s', args.solution_dir)
         else:
-            # Otherwise, look for all supported languages
-            for ext in ['cpp', 'py', 'java']:
-                solution_files.extend(list(solution_dir.glob(f'*.{ext}')))
-        
-        if solution_files:
-            logger.info('Found %d solution files in %s', len(solution_files), solution_dir)
+            logger.info('Found %d solution files', len(solution_files))
             
-            # Compile all solutions that need compilation
-            for solution_file in solution_files:
-                if solution_file.suffix == '.cpp':
-                    # Compile C++ solution
-                    output_file = solution_dir / solution_file.stem
-                    compile_cmd = f'g++ -std=c++17 -O2 -o {output_file} {solution_file}'
-                    logger.info('Compiling %s...', solution_file)
-                    try:
-                        subprocess.run(compile_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        logger.info('Compilation successful')
-                    except subprocess.CalledProcessError as e:
-                        logger.error('Compilation failed: %s', e.stderr.decode())
-                        return 1
-                elif solution_file.suffix == '.java':
-                    # Compile Java solution
-                    compile_cmd = f'javac {solution_file}'
-                    logger.info('Compiling %s...', solution_file)
-                    try:
-                        subprocess.run(compile_cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        logger.info('Compilation successful')
-                    except subprocess.CalledProcessError as e:
-                        logger.error('Compilation failed: %s', e.stderr.decode())
-                        return 1
+            if language:
+                # 如果指定了语言，只选择该语言的解决方案
+                solution_files = [f for f in solution_files if is_file_of_language(f, language)]
+                if not solution_files:
+                    logger.warning('No %s solution files found', language)
             
-            # Use the solution based on the specified language or priority order
-            if args.language:
-                ext_map = {'cpp': '.cpp', 'python': '.py', 'java': '.java'}
-                target_ext = ext_map.get(args.language, f'.{args.language}')
-                for solution_file in solution_files:
-                    if solution_file.suffix == target_ext:
-                        if target_ext == '.cpp':
-                            args.command = str(solution_dir / solution_file.stem)
-                        elif target_ext == '.py':
-                            args.command = f'python3 {solution_file}'
-                        elif target_ext == '.java':
-                            args.command = f'java -cp {solution_dir} {solution_file.stem}'
-                        logger.info('Using %s solution: %s', args.language, args.command)
-                        break
-            else:
-                # Priority: cpp > python > java
-                found = False
-                # First try C++
-                for solution_file in solution_files:
-                    if solution_file.suffix == '.cpp':
-                        args.command = str(solution_dir / solution_file.stem)
-                        logger.info('Using C++ solution: %s', args.command)
-                        found = True
-                        break
+            if solution_files:
+                # 选择一个解决方案进行测试（优先级：C++ > Python > Java）
+                priority_order = {'cpp': 1, 'py': 2, 'java': 3}
+                selected_file = min(solution_files, key=lambda f: priority_order.get(f.suffix.lstrip('.'), 999))
                 
-                # Then try Python
-                if not found:
-                    for solution_file in solution_files:
-                        if solution_file.suffix == '.py':
-                            args.command = f'python3 {solution_file}'
-                            logger.info('Using Python solution: %s', args.command)
-                            found = True
-                            break
-                
-                # Finally try Java
-                if not found:
-                    for solution_file in solution_files:
-                        if solution_file.suffix == '.java':
-                            args.command = f'java -cp {solution_dir} {solution_file.stem}'
-                            logger.info('Using Java solution: %s', args.command)
-                            found = True
-                            break
+                solution_command = get_command_for_file(selected_file, language)
+                logger.info('Testing solution file: %s', selected_file)
+                logger.info('Command: %s', solution_command)
     
-    # list tests
-    if not args.directory.exists():
-        logger.error('no such directory: %s', args.directory)
-        return 1
-    tests = fmtutils.glob_with_format(args.directory, args.format)  # type: List[Tuple[pathlib.Path, pathlib.Path]]
-    if not tests:
-        # Try to find tests in the old directory structure
-        old_directory = pathlib.Path('test')
-        if old_directory.exists():
-            logger.warning('No tests found in %s, trying old directory structure: %s', args.directory, old_directory)
-            tests = fmtutils.glob_with_format(old_directory, args.format)
-            if tests:
-                logger.info('Found tests in old directory structure: %s', old_directory)
-                args.directory = old_directory
+    # 将选择的命令设置回args
+    args.command = solution_command
     
-    if not tests:
-        logger.error('no tests found')
-        return 1
-    logger.info('found %d tests', len(tests))
-
-    # Check if the tests use the old .out extension instead of .ans
-    has_out_extension = False
-    for _, paths in tests:
-        if len(paths) >= 2 and paths[1].suffix == '.out':
-            has_out_extension = True
-            break
+    # 设置测试参数
+    if args.gnu_time is None:
+        if platform.system() == 'Darwin':
+            args.gnu_time = 'gtime'
+        else:
+            args.gnu_time = 'time'
     
-    if has_out_extension:
-        logger.warning('Found tests with .out extension. The new format uses .ans extension.')
+    # list tests from the specified directory
+    tests = []  # type: List[Tuple[str, Tuple[pathlib.Path, Optional[pathlib.Path]]]]
+    
+    # 处理测试目录
+    dirs_to_scan = []
+    if args.directory.exists():
+        dirs_to_scan.append(args.directory)
         
-    # check wheather GNU time is available
-    gnu_time = 'time'
-    if platform.system() == 'Darwin':
-        gnu_time = 'gtime'
-    if not check_gnu_time(gnu_time):
-        gnu_time = None
-        logger.warning('GNU time is not available: %s', gnu_time)
-        if args.mle is not None:
-            logger.warning('MLE will be ignored')
-
-    # run tests
-    history = []  # type: List[Dict[str, Any]]
-    if args.jobs is None:
-        for name, paths in tests:
-            # Find the output file (could be .out or .ans)
-            output_path = None
-            for path in paths[1:]:
-                if path.suffix in ['.out', '.ans']:
-                    output_path = path
-                    break
-            history += [test_single_case(name, paths[0], output_path, args=args)]
+        # 如果指定了--secret参数，也测试secret目录中的测试用例
+        if args.secret and (args.directory.parent / 'secret').exists():
+            secret_dir = args.directory.parent / 'secret'
+            logger.info('also scanning secret tests under %s', secret_dir)
+            dirs_to_scan.append(secret_dir)
     else:
-        if os.name == 'nt':
-            logger.warning("-j/--jobs option is unstable on Windows environmet")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            lock = threading.Lock()
-            futures = []  # type: List[concurrent.futures.Future]
-            for name, paths in tests:
-                # Find the output file (could be .out or .ans)
+        logger.warning('Directory not found: %s', args.directory)
+        # 尝试旧的目录结构
+        old_dirs = [pathlib.Path('test'), pathlib.Path('tests')]
+        for old_dir in old_dirs:
+            if old_dir.exists():
+                logger.warning('No tests found in %s, trying old directory structure: %s', args.directory, old_dir)
+                dirs_to_scan.append(old_dir)
+                break
+    
+    # 从各个目录收集测试用例
+    for test_dir in dirs_to_scan:
+        dir_tests = fmtutils.glob_with_format(test_dir, args.format)
+        if dir_tests:
+            is_secret = test_dir.name == 'secret'
+            prefix = 'secret_' if is_secret else ''
+            logger.info('Found %d tests in %s', len(dir_tests), test_dir)
+            
+            for name, paths in dir_tests:
+                input_path = paths[0]
                 output_path = None
                 for path in paths[1:]:
                     if path.suffix in ['.out', '.ans']:
                         output_path = path
                         break
-                futures += [executor.submit(test_single_case, name, paths[0], output_path, lock=lock, args=args)]
-            for future in futures:
-                history += [future.result()]
+                tests.append((f"{prefix}{name}", (input_path, output_path)))
 
+    # 如果还指定了具体的测试文件，添加它们
+    if args.test:
+        for test_path in args.test:
+            if test_path.exists():
+                name = test_path.stem
+                output_path = None
+                for ext in ['.out', '.ans']:
+                    potential_output = test_path.with_suffix(ext)
+                    if potential_output.exists():
+                        output_path = potential_output
+                        break
+                tests.append((name, (test_path, output_path)))
+    
+    if not tests:
+        logger.error('No test cases found')
+        return 1
+    
+    logger.info('found %d tests in total', len(tests))
+    
+    # check whether GNU time is available
+    gnu_time = args.gnu_time
+    if not check_gnu_time(gnu_time):
+        gnu_time = None
+        logger.warning('GNU time is not available: %s', gnu_time)
+        if args.mle is not None:
+            logger.warning('MLE will be ignored')
+    
+    # run tests
+    history = []  # type: List[Dict[str, Any]]
+    if args.jobs is None:
+        for name, (input_path, output_path) in tests:
+            history.append(test_single_case(name, input_path, output_path, args=args))
+    else:
+        if os.name == 'nt':
+            logger.warning("-j/--jobs option is unstable on Windows environment")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+            lock = threading.Lock()
+            futures = []  # type: List[concurrent.futures.Future]
+            for name, (input_path, output_path) in tests:
+                futures.append(executor.submit(test_single_case, name, input_path, output_path, lock=lock, args=args))
+            for future in futures:
+                history.append(future.result())
+    
     # summarize
     test_results = []
     for result in history:
@@ -497,3 +477,63 @@ def run(args: 'argparse.Namespace') -> int:
     else:
         logger.info('all tests passed')
         return 0
+
+# 辅助函数：基于文件类型返回适当的命令
+def get_command_for_file(file_path: pathlib.Path, language: Optional[str] = None) -> str:
+    if language is None:
+        # 根据文件扩展名判断语言
+        suffix = file_path.suffix.lower()
+        if suffix in ['.cpp', '.cc', '.cxx']:
+            language = 'cpp'
+        elif suffix == '.py':
+            language = 'python'
+        elif suffix == '.java':
+            language = 'java'
+        else:
+            logger.warning('Unknown file type: %s, will try to use default command', suffix)
+            return utils.get_default_command()
+    
+    if language == 'cpp':
+        # 编译C++文件
+        output_file = file_path.with_suffix('')
+        compile_cmd = f'g++ -std=c++17 -O2 "{file_path}" -o "{output_file}"'
+        logger.info('Compiling: %s', compile_cmd)
+        
+        proc = subprocess.run(compile_cmd, shell=True, capture_output=True, text=True)
+        if proc.returncode != 0:
+            logger.error('Compilation failed:\n%s', proc.stderr)
+            return utils.get_default_command()
+        
+        # 返回编译后的可执行文件路径
+        return str(output_file)
+    
+    elif language == 'python':
+        return f'python3 "{file_path}"'
+    
+    elif language == 'java':
+        # 编译Java文件
+        class_name = file_path.stem
+        compile_cmd = f'javac "{file_path}"'
+        logger.info('Compiling: %s', compile_cmd)
+        
+        proc = subprocess.run(compile_cmd, shell=True, capture_output=True, text=True)
+        if proc.returncode != 0:
+            logger.error('Compilation failed:\n%s', proc.stderr)
+            return utils.get_default_command()
+        
+        # 返回java命令
+        return f'java -cp "{file_path.parent}" {class_name}'
+    
+    # 如果语言未知，使用默认命令
+    return utils.get_default_command()
+
+# 辅助函数：检查文件是否属于指定语言
+def is_file_of_language(file_path: pathlib.Path, language: str) -> bool:
+    suffix = file_path.suffix.lower()
+    if language == 'cpp':
+        return suffix in ['.cpp', '.cc', '.cxx']
+    elif language == 'python':
+        return suffix == '.py'
+    elif language == 'java':
+        return suffix == '.java'
+    return False
