@@ -130,10 +130,17 @@ def run(args: argparse.Namespace) -> bool:
         validator_args = argparse.Namespace()
         validator_args.dir = args.dir
         validator_args.test = None
+<<<<<<< HEAD
         validator_args.validator = None
         validator_args.test_dir = None  # 让validator子命令自行决定目录
         validator_args.only_sample = False
         validator_args.only_secret = False
+=======
+        validator_args.validator = './input_validators/validate.py'
+        validator_args.only_sample = False
+        validator_args.only_secret = False
+        validator_args.silent = False
+>>>>>>> 6e8c1fd8e1ff6025d18e041f2ca1efd0e44d2228
         
         # Run validator
         validator_success = validator.run(validator_args)
@@ -203,9 +210,13 @@ def run(args: argparse.Namespace) -> bool:
         test_args.gnu_time = None
         test_args.judge_command = None
         test_args.select = None
+<<<<<<< HEAD
         test_args.language = language if not has_solution_in_new_structure else solution_path.suffix[1:]
         test_args.solution_file = None  # 对新版本的支持
         test_args.solution_dir = None   # 对新版本的支持
+=======
+        test_args.language = language
+>>>>>>> 6e8c1fd8e1ff6025d18e041f2ca1efd0e44d2228
         
         # 准备解决方案
         vis.print_info(f"Preparing solution: {solution_path}")

@@ -8,7 +8,7 @@ import packaging.version
 import requests
 
 import onlinejudge_command.__about__ as version
-from onlinejudge.utils import user_cache_dir
+from onlinejudge_command.utils import user_cache_dir
 
 logger = getLogger(__name__)
 
@@ -34,7 +34,7 @@ def request(method: str, url: str, session: requests.Session, raise_for_status: 
 
 def get_latest_version_from_pypi(package_name: str) -> str:
     pypi_url = 'https://pypi.org/pypi/{}/json'.format(package_name)
-    version_cache_path = user_cache_dir / "pypi.json"
+    version_cache_path = user_cache_dir() / "pypi.json"
     update_interval = 60 * 60 * 8  # 8 hours
 
     # load cache
