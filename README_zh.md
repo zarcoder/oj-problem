@@ -80,7 +80,7 @@ $ np qa                      # 运行完整的质量保证检查
 ```console
 $ mkdir my-problem && cd my-problem
 $ np p -l cpp
-[INFO] np-problem-tools 1.0.1
+[INFO] np-problem-tools 1.1.1
 [INFO] created directory: test
 [INFO] created file: std.cpp
 [INFO] created file: force.cpp
@@ -94,7 +94,7 @@ $ np p -l cpp
 ```console
 $ echo "3\n1 2 3" > test/sample-1.in
 $ np v
-[INFO] np-problem-tools 1.0.1
+[INFO] np-problem-tools 1.1.1
 [INFO] validating: test/sample-1.in
 [INFO] [SUCCESS] test/sample-1.in is valid
 [INFO] Validation complete: 1 valid, 0 invalid
@@ -128,7 +128,7 @@ $ g++ -o solution solution.cpp
 $ echo "3\n1 2 3" > test/sample-1.in
 $ echo "6" > test/sample-1.out
 $ np t -c "./solution"
-[INFO] np-problem-tools 1.0.1
+[INFO] np-problem-tools 1.1.1
 [INFO] 1 cases found
 
 [INFO] sample-1
@@ -144,14 +144,14 @@ $ np t -c "./solution"
 
 ```console
 $ np template list
-[INFO] np-problem-tools 1.0.1
+[INFO] np-problem-tools 1.1.1
 [INFO] Default language: cpp
 [INFO] Templates for cpp:
 [INFO]   std: /path/to/std.cpp
 [INFO]   force: /path/to/force.cpp
 
 $ np template set std ~/templates/fast_io.cpp -l cpp
-[INFO] np-problem-tools 1.0.1
+[INFO] np-problem-tools 1.1.1
 [INFO] Template set: std for cpp -> /home/user/templates/fast_io.cpp
 ```
 
@@ -159,7 +159,7 @@ $ np template set std ~/templates/fast_io.cpp -l cpp
 
 ```console
 $ np compare --count 10
-[INFO] np-problem-tools 1.0.1
+[INFO] np-problem-tools 1.1.1
 [INFO] Using random seed: 123456789
 [INFO] Compiling std.cpp...
 [INFO] Compilation successful
@@ -173,7 +173,7 @@ $ np compare --count 10
 
 ```console
 $ np qa
-[INFO] np-problem-tools 1.0.1
+[INFO] np-problem-tools 1.1.1
 ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ Quality Assurance Check                                                                                  │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────╯
