@@ -214,6 +214,10 @@ def run(args: argparse.Namespace) -> bool:
         return False
     
     # validate input files
+    if args.validator is None:
+        args.validator = './input_validators/validate.py'  # Set default if None
+        utils.logger.info('Using default validator: {}'.format(args.validator))
+
     validator = pathlib.Path(args.validator)
     if not validator.exists():
         utils.logger.error('validator: {} doesn\'t exist'.format(validator))

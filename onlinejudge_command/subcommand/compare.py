@@ -25,17 +25,20 @@ def add_subparser(subparsers: argparse.Action) -> None:
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='''\
 example:
-    $ np compare                  # compare std and force solutions with existing test files
+    $ np compare                  # compare std solution with all other solutions using all test data
+    $ np compare --no-all         # compare only std and brute_force solutions (like original behavior)
     $ np compare --random         # compare with random tests
     $ np compare --count=100      # run 100 random tests (with --random)
     $ np compare --seed=42        # use seed 42 for random tests (with --random)
     $ np compare --std=./std --force=./force  # specify solution paths
     $ np compare --language=cpp   # specify language for solutions
+    $ np compare --test-dir=data/sample  # use only sample tests instead of all tests
 
 note:
-    By default, the command will look for solutions in the following locations:
-    - Standard solution: solution/accepted/*.{language} (or other language extension)
-    - Brute force solution: solution/brute_force/*.{language} (or other language extension)
+    By default, the command will:
+    - Use all test files in data/ directory (both sample and secret)
+    - Compare standard solution with all other solutions in solution/ directory
+    - Look for standard solution in solution/accepted/*.{language}
     
     If a specific language is not specified or a file with the specified language is not found,
     the command will try to find any solution file with supported languages (cpp, py, java).
@@ -47,6 +50,8 @@ note:
     subparser.add_argument('--dir', '-d', type=pathlib.Path, default=pathlib.Path('.'), help='specify the directory containing solutions')
     subparser.add_argument('--std', type=pathlib.Path, help='specify the path to std solution')
     subparser.add_argument('--force', type=pathlib.Path, help='specify the path to force solution')
+    subparser.add_argument('--all', action='store_true', default=True, help='compare std solution with all other solutions (default: True)')
+    subparser.add_argument('--no-all', action='store_false', dest='all', help='only compare std and brute_force solutions (disable --all)')
     subparser.add_argument('--random', '-r', action='store_true', help='use random tests instead of existing test files')
     subparser.add_argument('--count', '-n', type=int, help='number of random tests to run (with --random)')
     subparser.add_argument('--seed', '-s', type=int, help='random seed (with --random)')
@@ -54,7 +59,7 @@ note:
     subparser.add_argument('--language', '-l', type=str, help='specify the language (cpp, python, java)')
     subparser.add_argument('--timeout', '-t', type=float, help='timeout for each test in seconds')
     subparser.add_argument('--verbose', '-v', action='store_true', help='show details of each test')
-    subparser.add_argument('--test-dir', type=pathlib.Path, default=pathlib.Path('data/sample'), help='directory containing test files (default: data/sample/)')
+    subparser.add_argument('--test-dir', type=pathlib.Path, default=None, help='directory containing test files (default: data/)')
     subparser.add_argument('--format', '-f', default='%s.%e', help='a format string to recognize the relationship of test cases. (default: "%%s.%%e")')
 
 
@@ -75,10 +80,12 @@ def run(args: argparse.Namespace) -> bool:
     }
     language = language_map.get(language.lower(), language) if language else language
     
-    # Determine paths
+    # Find standard solution
     if args.std:
         std_path = args.std
     else:
+        solution_found = False
+        
         # First try to find in solution/accepted directory
         solution_dir = args.dir / 'solution' / 'accepted'
         if solution_dir.exists():
@@ -88,6 +95,7 @@ def run(args: argparse.Namespace) -> bool:
                 for file in solution_dir.glob(f'*.{language}'):
                     std_path = file
                     found = True
+                    solution_found = True
                     vis.print_info(f'Using standard solution: {std_path}')
                     break
             
@@ -100,18 +108,53 @@ def run(args: argparse.Namespace) -> bool:
                         std_path = file
                         language = lang  # Update language to match found file
                         found = True
+                        solution_found = True
                         vis.print_info(f'Using standard solution: {std_path} (language: {language})')
                         break
+        
+        # If no solution found in accepted/, search entire solution/ directory
+        if not solution_found:
+            solution_root = args.dir / 'solution'
+            if solution_root.exists():
+                vis.print_info(f'No solution found in accepted/, searching in solution/ directory')
+                # Try to find any *.cpp, *.py, or *.java files in solution/ directory (recursive)
+                solution_files = []
+                for ext in ['cpp', 'py', 'java']:
+                    solution_files.extend(list(solution_root.glob(f'**/*.{ext}')))
+                
+                if solution_files:
+                    # Use the first solution found
+                    std_path = solution_files[0]
+                    language = std_path.suffix[1:]  # Update language to match found file
+                    solution_found = True
+                    vis.print_info(f'Using solution: {std_path.relative_to(args.dir)} (language: {language})')
             
             # If still not found, use default
-            if not found:
+            if not solution_found:
                 std_path = args.dir / _get_filename_for_language('std', language)
-        else:
-            std_path = args.dir / _get_filename_for_language('std', language)
+                vis.print_info(f'No solution files found in solution/ directory, trying {std_path}')
+        
+    # Check if std exists
+    if not std_path.exists():
+        vis.print_error(f'std solution not found: {std_path}')
+        return False
     
+    # Prepare standard solution
+    vis.print_header(f"Preparing standard solution")
+    std_executable = _prepare_solution(std_path, language, cfg)
+    if std_executable is None:
+        return False
+    
+    # If --all option is used (default), find all solutions in solution/ directory
+    if args.all:
+        return _compare_all_solutions(args, std_path, std_executable, language, cfg)
+    
+    # Regular compare flow with single force solution
     if args.force:
         force_path = args.force
     else:
+        force_found = False
+        
         # First try to find in solution/brute_force directory
         solution_dir = args.dir / 'solution' / 'brute_force'
         if solution_dir.exists():
@@ -121,6 +164,7 @@ def run(args: argparse.Namespace) -> bool:
                 for file in solution_dir.glob(f'*.{language}'):
                     force_path = file
                     found = True
+                    force_found = True
                     vis.print_info(f'Using brute force solution: {force_path}')
                     break
             
@@ -131,38 +175,45 @@ def run(args: argparse.Namespace) -> bool:
                         break
                     for file in solution_dir.glob(f'*.{lang}'):
                         force_path = file
-                        # Note: We don't update language here to keep it consistent with std solution
                         found = True
+                        force_found = True
                         vis.print_info(f'Using brute force solution: {force_path}')
                         break
+        
+        # If no dedicated force solution is found, try to find any other solution in solution/ directory
+        if not force_found:
+            solution_root = args.dir / 'solution'
+            if solution_root.exists():
+                # Look for solutions in other subdirectories (not accepted or the directory containing std)
+                std_dir = std_path.parent
+                other_dirs = [d for d in solution_root.iterdir() 
+                             if d.is_dir() and d.name != 'accepted' and d != std_dir]
+                
+                if other_dirs:
+                    vis.print_info(f'No dedicated brute_force solution found, using --all mode')
+                    # Use implicit --all mode instead of single comparison
+                    return _compare_all_solutions(args, std_path, std_executable, language, cfg)
             
-            # If still not found, use default
-            if not found:
-                force_path = args.dir / _get_filename_for_language('force', language)
-        else:
+            # If still no alternatives, use default
             force_path = args.dir / _get_filename_for_language('force', language)
+            vis.print_info(f'No alternative solutions found, trying {force_path}')
     
-    # Check if files exist
-    if not std_path.exists():
-        vis.print_error(f'std solution not found: {std_path}')
+    # Check if force exists
+    if not force_path.exists():
+        vis.print_error(f'Force solution not found: {force_path}')
+        vis.print_info(f'You can try using --all to compare with all available solutions')
         return False
     
-    if not force_path.exists():
-        vis.print_error(f'force solution not found: {force_path}')
+    # Prepare force solution
+    vis.print_header(f"Preparing force solution")
+    force_executable = _prepare_solution(force_path, language, cfg)
+    if force_executable is None:
         return False
     
     # Determine timeout
     timeout = args.timeout
     if timeout is None:
         timeout = cfg.get('test', {}).get('timeout', 5.0)
-    
-    # Prepare solutions
-    vis.print_header(f"Preparing solutions")
-    std_executable = _prepare_solution(std_path, language, cfg)
-    force_executable = _prepare_solution(force_path, language, cfg)
-    
-    if std_executable is None or force_executable is None:
-        return False
     
     # Check if we should use random tests
     if args.random:
@@ -171,27 +222,135 @@ def run(args: argparse.Namespace) -> bool:
         return _run_existing_tests(args, std_executable, force_executable, language, timeout, cfg)
 
 
+def _compare_all_solutions(args: argparse.Namespace, std_path: pathlib.Path, std_executable: pathlib.Path, language: str, cfg: Dict[str, Any]) -> bool:
+    """Compare standard solution with all other solutions found in solution/ directory."""
+    solution_root = args.dir / 'solution'
+    if not solution_root.exists():
+        vis.print_error(f'Solution directory not found: {solution_root}')
+        return False
+    
+    # Get all subdirectories in solution/ except accepted/
+    solution_dirs = [d for d in solution_root.iterdir() if d.is_dir() and d.name != 'accepted']
+    
+    if not solution_dirs:
+        vis.print_error(f'No solution directories found in {solution_root} (except accepted/)')
+        return False
+    
+    vis.print_info(f'Found {len(solution_dirs)} solution directories to compare with standard solution')
+    
+    # Determine timeout
+    timeout = args.timeout
+    if timeout is None:
+        timeout = cfg.get('test', {}).get('timeout', 5.0)
+    
+    all_passed = True
+    solutions_found = False
+    
+    # Compare with each solution directory
+    for solution_dir in solution_dirs:
+        # Find all solution files in this directory
+        solution_files = []
+        
+        # First specifically look for files named "solution.*"
+        for ext in ['cpp', 'py', 'java']:
+            solution_files.extend(list(solution_dir.glob(f'solution.{ext}')))
+            
+        # If no "solution.*" files found, try all files with supported extensions
+        if not solution_files:
+            for ext in ['cpp', 'py', 'java']:
+                solution_files.extend(list(solution_dir.glob(f'*.{ext}')))
+        
+        # Skip empty directories silently (no warning)
+        if not solution_files:
+            continue
+            
+        # Show header only if there are files to compare
+        vis.print_header(f"Checking solutions in {solution_dir.name}/")
+        solutions_found = True
+        
+        # Compare each solution with std
+        for force_path in solution_files:
+            vis.print_info(f'Comparing with {force_path.relative_to(args.dir)}')
+            
+            # Prepare force solution
+            force_executable = _prepare_solution(force_path, force_path.suffix[1:], cfg)
+            if force_executable is None:
+                all_passed = False
+                continue
+            
+            # Run comparison
+            if args.random:
+                result = _run_random_tests(args, std_executable, force_executable, language, timeout, cfg)
+            else:
+                result = _run_existing_tests(args, std_executable, force_executable, language, timeout, cfg)
+            
+            if not result:
+                all_passed = False
+    
+    if not solutions_found:
+        vis.print_warning(f"No solution files found in any subdirectories of {solution_root}")
+        return True  # Return success if no solutions to compare
+        
+    return all_passed
+
+
 def _run_existing_tests(args: argparse.Namespace, std_executable: pathlib.Path, force_executable: pathlib.Path, language: str, timeout: float, cfg: Dict[str, Any]) -> bool:
     """Run comparison tests using existing test files."""
-    # Check if test directory exists
-    if not args.test_dir.exists():
-        # Try old directory structure if new one doesn't exist
-        old_test_dir = pathlib.Path('test')
-        if old_test_dir.exists():
-            vis.print_warning(f'Test directory {args.test_dir} not found, using {old_test_dir} instead')
-            args.test_dir = old_test_dir
+    # Determine test directory - if not specified, use data/ directory
+    if args.test_dir is None:
+        data_dir = args.dir / 'data'
+        if data_dir.exists():
+            test_dirs = []
+            
+            # Check if sample and secret directories exist
+            sample_dir = data_dir / 'sample'
+            secret_dir = data_dir / 'secret'
+            
+            found_dirs = False
+            if sample_dir.exists():
+                test_dirs.append(sample_dir)
+                found_dirs = True
+                
+            if secret_dir.exists():
+                test_dirs.append(secret_dir)
+                found_dirs = True
+                
+            if not found_dirs:
+                # If no sample/secret subdirectories, just use data/ itself
+                test_dirs.append(data_dir)
+                vis.print_info(f'Using tests from {data_dir} directory')
         else:
+            # If data/ doesn't exist, try old directory structure
+            test_dir = args.dir / 'test'
+            if test_dir.exists():
+                test_dirs = [test_dir]
+                vis.print_info(f'Using tests from {test_dir} directory')
+            else:
+                vis.print_error(f'Test directory not found: {data_dir} or {test_dir}')
+                vis.print_info(f'You can use --random to run random tests instead')
+                return False
+    else:
+        # Use specified test directory
+        test_dirs = [args.test_dir]
+        if not args.test_dir.exists():
             vis.print_error(f'Test directory not found: {args.test_dir}')
+            vis.print_info(f'You can use --random to run random tests instead')
             return False
     
-    # Find test files
-    tests = fmtutils.glob_with_format(args.test_dir, args.format)
-    if not tests:
-        vis.print_error(f'No test files found in {args.test_dir}')
+    # Find test files from all test directories
+    all_tests = []
+    for test_dir in test_dirs:
+        tests = fmtutils.glob_with_format(test_dir, args.format)
+        if tests:
+            vis.print_info(f'Found {len(tests)} tests in {test_dir}')
+            all_tests.extend(tests)
+    
+    if not all_tests:
+        vis.print_error(f'No test files found in specified directories')
         vis.print_info(f'You can use --random to run random tests instead')
         return False
     
-    vis.print_header(f"Running {len(tests)} existing tests")
+    vis.print_header(f"Running {len(all_tests)} existing tests")
     
     # Create progress bar if rich is available
     progress = vis.create_progress()
@@ -199,8 +358,8 @@ def _run_existing_tests(args: argparse.Namespace, std_executable: pathlib.Path, 
     
     if progress:
         with progress:
-            task = progress.add_task("Running tests...", total=len(tests))
-            for i, (name, paths) in enumerate(tests):
+            task = progress.add_task("Running tests...", total=len(all_tests))
+            for i, (name, paths) in enumerate(all_tests):
                 # Only use .in files
                 if len(paths) >= 1:
                     input_path = paths[0]
@@ -211,8 +370,8 @@ def _run_existing_tests(args: argparse.Namespace, std_executable: pathlib.Path, 
                     compare_results.append(result)
                 progress.update(task, advance=1)
     else:
-        for i, (name, paths) in enumerate(tests):
-            vis.print_info(f'Test {i + 1}/{len(tests)}: {name}')
+        for i, (name, paths) in enumerate(all_tests):
+            vis.print_info(f'Test {i + 1}/{len(all_tests)}: {name}')
             # Only use .in files
             if len(paths) >= 1:
                 input_path = paths[0]

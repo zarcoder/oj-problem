@@ -31,6 +31,7 @@ tips:
     )
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('--version', action='store_true', help='print the np-problem-tools version number')
+    parser.add_argument('--update-check', action='store_true', help='check for updates (disabled by default)')
 
     subparsers = parser.add_subparsers(dest='subcommand', help='for details, see "{} COMMAND --help"'.format(sys.argv[0]))
     subcommand_test.add_subparser(subparsers)
@@ -99,8 +100,10 @@ def main(args: Optional[List[str]] = None) -> 'NoReturn':
     handler.setFormatter(log_formatter.LogFormatter())
     basicConfig(level=level, handlers=[handler])
 
-    # check update
-    is_updated = update_checking.run()
+    # check update only if explicitly requested
+    is_updated = True
+    if parsed.update_check:
+        is_updated = update_checking.run()
 
     try:
         sys.exit(run_program(parsed, parser=parser))
@@ -109,13 +112,13 @@ def main(args: Optional[List[str]] = None) -> 'NoReturn':
         logger.error('NotImplementedError')
         logger.info('The operation you specified is not supported yet. Pull requests are welcome.')
         logger.info('see: https://github.com/zarcoder/np-problem-tools')
-        if not is_updated:
+        if not is_updated and parsed.update_check:
             logger.info(utils.HINT + 'try updating the version of np-problem-tools: $ pip3 install -U np-problem-tools')
         sys.exit(1)
     except Exception as e:
         logger.debug('\n' + traceback.format_exc())
         logger.exception(str(e))
-        if not is_updated:
+        if not is_updated and parsed.update_check:
             logger.info(utils.HINT + 'try updating the version of np-problem-tools: $ pip3 install -U np-problem-tools')
         sys.exit(1)
 

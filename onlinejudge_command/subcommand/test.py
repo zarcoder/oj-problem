@@ -37,8 +37,7 @@ tips:
 ''')
     subparser.add_argument('-c', '--command', default=utils.get_default_command(), help='your solution to be tested. (default: "{}")'.format(utils.get_default_command()))
     subparser.add_argument('-f', '--format', default='%s.%e', help='a format string to recognize the relationship of test cases. (default: "%%s.%%e")')
-    subparser.add_argument('-d', '--directory', type=pathlib.Path, default=pathlib.Path('data/sample'), help='a directory name for test cases (default: data/sample/)')
-    subparser.add_argument('-s', '--secret', action='store_true', help='also test against secret test cases in data/secret/')
+    subparser.add_argument('-d', '--directory', type=pathlib.Path, default=pathlib.Path('data'), help='a directory name for test cases (default: data/)')
     subparser.add_argument('-m', '--compare-mode', choices=[mode.value for mode in CompareMode], default=CompareMode.CRLF_INSENSITIVE_EXACT_MATCH.value, help='mode to compare outputs. The default behavoir is exact-match to ensure that you always get AC on remote judge servers when you got AC on local tests for the same cases.  (default: crlf-insensitive-exact-match)')
     subparser.add_argument('-M', '--display-mode', choices=[mode.value for mode in DisplayMode], default=DisplayMode.SUMMARY.value, help='mode to display outputs  (default: summary)')
     subparser.add_argument('-S', '--ignore-spaces', dest='compare_mode', action='store_const', const=CompareMode.IGNORE_SPACES.value, help="ignore spaces to compare outputs, but doesn't ignore newlines  (equivalent to --compare-mode=ignore-spaces")
@@ -330,7 +329,7 @@ def run(args: argparse.Namespace) -> int:
         logger.info('Testing solution file: %s', args.solution_file)
         logger.info('Command: %s', solution_command)
     # 否则，查找solution目录中的所有解决方案
-    elif args.solution_dir.exists():
+    elif args.solution_dir and args.solution_dir.exists():
         logger.info('Looking for solutions in: %s', args.solution_dir)
         solution_files = list(args.solution_dir.glob('*.*'))
         
@@ -369,21 +368,31 @@ def run(args: argparse.Namespace) -> int:
     
     # 处理测试目录
     dirs_to_scan = []
-    if args.directory.exists():
-        dirs_to_scan.append(args.directory)
-        
-        # 如果指定了--secret参数，也测试secret目录中的测试用例
-        if args.secret and (args.directory.parent / 'secret').exists():
-            secret_dir = args.directory.parent / 'secret'
-            logger.info('also scanning secret tests under %s', secret_dir)
-            dirs_to_scan.append(secret_dir)
+    # 确保 directory 是 pathlib.Path 类型
+    directory = args.directory if isinstance(args.directory, pathlib.Path) else pathlib.Path(args.directory)
+    
+    if directory.exists():
+        # 如果目录存在，查找所有子目录
+        if directory.name == 'data':
+            # 如果是主data目录，扫描所有子目录
+            subdirs = [d for d in directory.iterdir() if d.is_dir()]
+            if subdirs:
+                logger.info('Scanning all subdirectories under %s', directory)
+                dirs_to_scan.extend(subdirs)
+            else:
+                # 如果没有子目录，直接扫描主目录
+                logger.info('No subdirectories found under %s, scanning the directory itself', directory)
+                dirs_to_scan.append(directory)
+        else:
+            # 如果不是主data目录，直接扫描该目录
+            dirs_to_scan.append(directory)
     else:
-        logger.warning('Directory not found: %s', args.directory)
+        logger.warning('Directory not found: %s', directory)
         # 尝试旧的目录结构
         old_dirs = [pathlib.Path('test'), pathlib.Path('tests')]
         for old_dir in old_dirs:
             if old_dir.exists():
-                logger.warning('No tests found in %s, trying old directory structure: %s', args.directory, old_dir)
+                logger.warning('No tests found in %s, trying old directory structure: %s', directory, old_dir)
                 dirs_to_scan.append(old_dir)
                 break
     
@@ -391,8 +400,8 @@ def run(args: argparse.Namespace) -> int:
     for test_dir in dirs_to_scan:
         dir_tests = fmtutils.glob_with_format(test_dir, args.format)
         if dir_tests:
-            is_secret = test_dir.name == 'secret'
-            prefix = 'secret_' if is_secret else ''
+            # 根据目录名创建前缀
+            dir_prefix = test_dir.name + '_' if test_dir.name != 'data' else ''
             logger.info('Found %d tests in %s', len(dir_tests), test_dir)
             
             for name, paths in dir_tests:
@@ -402,7 +411,7 @@ def run(args: argparse.Namespace) -> int:
                     if path.suffix in ['.out', '.ans']:
                         output_path = path
                         break
-                tests.append((f"{prefix}{name}", (input_path, output_path)))
+                tests.append((f"{dir_prefix}{name}", (input_path, output_path)))
 
     # 如果还指定了具体的测试文件，添加它们
     if args.test:
