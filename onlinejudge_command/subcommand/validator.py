@@ -16,8 +16,6 @@ try:
 except ImportError:
     HAS_RICH = False
 
-
-<<<<<<< HEAD
 def add_subparser(subparsers: argparse.Action) -> None:
     subparser = subparsers.add_parser(
         'validator',
@@ -171,8 +169,6 @@ def run(args: argparse.Namespace) -> bool:
     logger.info('  %d validations passed, %d validations failed', success_count, failure_count)
     
     return all_success 
-=======
-def add_subparser(subparsers: argparse.ArgumentParser) -> None:
     subparser = subparsers.add_parser('validator', aliases=['v'], help='validate input files', formatter_class=argparse.RawTextHelpFormatter, epilog='''\
 validate input files using the specified validator
 
@@ -349,4 +345,3 @@ def print_basic_table(results: List[Dict[str, Any]]) -> None:
     
     # Print table footer
     utils.logger.info("╰" + "─" * max_file_width + "┴" + "─" * max_status_width + "┴" + "─" * max_error_width + "╯") 
->>>>>>> 6e8c1fd8e1ff6025d18e041f2ca1efd0e44d2228

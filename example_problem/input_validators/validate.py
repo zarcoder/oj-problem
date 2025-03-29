@@ -1,46 +1,96 @@
 #!/usr/bin/env python3
-
 import sys
 import re
 
-def validate_input(input_data):
+def main():
     """
-    Validate the input according to the problem constraints.
-    Return True if the input is valid, False otherwise.
+    验证输入是否符合题目要求:
+    - 第一行: m (2 <= m <= 10^5), 整数个数
+    - 第二行: m个互不相同的整数
+    - 第三行: n (1 <= n <= 10^5), 查询个数
+    - 接下来n行: 每行一个整数查询
     """
-    lines = input_data.strip().split('\n')
+    lines = sys.stdin.readlines()
+    line_index = 0
     
-    # 要求至少有两行输入
-    if len(lines) < 2:
-        print("Error: Input must have at least 2 lines", file=sys.stderr)
-        return False
+    # 验证第一行: m
+    if line_index >= len(lines):
+        print(f"错误: 缺少输入行", file=sys.stderr)
+        return 1
     
-    # 第一行必须是一个整数
-    try:
-        n = int(lines[0])
-        if not (1 <= n <= 100):
-            print(f"Error: First line must be an integer between 1 and 100, got {n}", file=sys.stderr)
-            return False
-    except ValueError:
-        print(f"Error: First line must be an integer, got '{lines[0]}'", file=sys.stderr)
-        return False
+    line = lines[line_index].strip()
+    line_index += 1
     
-    # 第二行必须包含n个整数
-    try:
-        values = list(map(int, lines[1].split()))
-        if len(values) != n:
-            print(f"Error: Second line must contain exactly {n} integers, got {len(values)}", file=sys.stderr)
-            return False
-    except ValueError:
-        print("Error: Second line must contain integers only", file=sys.stderr)
-        return False
+    if not re.match(r'^[0-9]+$', line):
+        print(f"错误: 第一行应该是一个整数m", file=sys.stderr)
+        return 1
     
-    return True
+    m = int(line)
+    if m < 2 or m > 10**5:
+        print(f"错误: m的值应该在2和10^5之间，当前值: {m}", file=sys.stderr)
+        return 1
+    
+    # 验证第二行: m个互不相同的整数
+    if line_index >= len(lines):
+        print(f"错误: 缺少输入行", file=sys.stderr)
+        return 1
+    
+    line = lines[line_index].strip()
+    line_index += 1
+    
+    numbers = line.split()
+    if len(numbers) != m:
+        print(f"错误: 第二行应该包含{m}个整数，实际包含{len(numbers)}个", file=sys.stderr)
+        return 1
+    
+    # 检查是否所有元素都是整数
+    for num in numbers:
+        if not re.match(r'^-?[0-9]+$', num):
+            print(f"错误: '{num}'不是一个有效的整数", file=sys.stderr)
+            return 1
+    
+    # 检查是否所有元素都不相同
+    num_set = set(map(int, numbers))
+    if len(num_set) != m:
+        print(f"错误: 第二行的整数应该互不相同", file=sys.stderr)
+        return 1
+    
+    # 验证第三行: n
+    if line_index >= len(lines):
+        print(f"错误: 缺少输入行", file=sys.stderr)
+        return 1
+    
+    line = lines[line_index].strip()
+    line_index += 1
+    
+    if not re.match(r'^[0-9]+$', line):
+        print(f"错误: 第三行应该是一个整数n", file=sys.stderr)
+        return 1
+    
+    n = int(line)
+    if n < 1 or n > 10**5:
+        print(f"错误: n的值应该在1和10^5之间，当前值: {n}", file=sys.stderr)
+        return 1
+    
+    # 验证接下来的n行，每行一个整数
+    for i in range(n):
+        if line_index >= len(lines):
+            print(f"错误: 缺少查询输入，应有{n}个查询，实际只有{i}个", file=sys.stderr)
+            return 1
+        
+        line = lines[line_index].strip()
+        line_index += 1
+        
+        if not re.match(r'^-?[0-9]+$', line):
+            print(f"错误: 查询{i+1}不是一个有效的整数", file=sys.stderr)
+            return 1
+    
+    # 检查是否还有多余的行
+    if line_index < len(lines) and lines[line_index].strip():
+        print(f"错误: 输入文件包含多余的行", file=sys.stderr)
+        return 1
+    
+    return 0
 
-if __name__ == '__main__':
-    input_data = sys.stdin.read()
-    if validate_input(input_data):
-        print("Input is valid")
-        sys.exit(0)
-    else:
-        sys.exit(1)
+if __name__ == "__main__":
+    sys.exit(main()) 

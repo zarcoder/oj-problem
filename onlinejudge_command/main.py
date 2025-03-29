@@ -5,7 +5,6 @@ import traceback
 from logging import DEBUG, INFO, StreamHandler, basicConfig, getLogger
 from typing import *
 
-import onlinejudge_command.__0_workaround_for_conflict  # pylint: disable=unused-import
 import onlinejudge_command.__about__ as version
 import onlinejudge_command.subcommand.compare as subcommand_compare
 import onlinejudge_command.subcommand.generate_input as subcommand_generate_input
