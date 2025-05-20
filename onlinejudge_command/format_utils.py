@@ -68,6 +68,9 @@ def glob_with_format(directory: pathlib.Path, format: str) -> List[Tuple[str, Li
     for path in paths:
         logger.debug('testcase globbed: %s', path)
     
+    # 调试信息：显示找到的所有路径
+    logger.debug('Found %d files matching pattern %s', len(paths), pattern)
+    
     # Construct relationship of files
     tests = collections.defaultdict(list)
     for path in paths:
@@ -75,13 +78,34 @@ def glob_with_format(directory: pathlib.Path, format: str) -> List[Tuple[str, Li
         if m:
             name = m.groupdict()['name']
             tests[name].append(path)
+            logger.debug('  Matched file %s to test name %s', path, name)
+        else:
+            logger.warning('  File %s did not match format %s', path, format)
     
     # Sort paths for each test case
     result = []
     for name, paths in sorted(tests.items()):
-        # Sort paths so that .in comes before .out
-        paths.sort(key=lambda p: p.suffix)
-        result.append((name, paths))
+        # 检查每个测试是否有对应的输入和输出文件
+        input_files = [p for p in paths if p.suffix == '.in']
+        output_files = [p for p in paths if p.suffix in ['.out', '.ans']]
+        
+        if not input_files:
+            logger.warning('Test %s is missing input file', name)
+            continue
+            
+        if not output_files:
+            logger.debug('Test %s is missing output file', name)
+        
+        # 确保.in文件在第一位
+        sorted_paths = []
+        for p in paths:
+            if p.suffix == '.in':
+                sorted_paths.insert(0, p)
+            else:
+                sorted_paths.append(p)
+                
+        logger.debug('Test case %s has paths: %s', name, sorted_paths)
+        result.append((name, sorted_paths))
     
     return result
 
@@ -93,7 +117,11 @@ def match_with_format(directory: pathlib.Path, format: str, path: pathlib.Path) 
     table['s'] = '(?P<name>.+)'
     table['e'] = '(?P<ext>in|out|ans)'
     pattern = re.compile(re.escape(str(directory.resolve()) + os.path.sep) + percentformat(re.escape(format).replace(re.escape('%'), '%'), table))
-    return pattern.match(str(path.resolve()))
+    match = pattern.match(str(path.resolve()))
+    if match:
+        logger.debug("Matched file: %s with pattern %s, groups: %s", 
+                     path, pattern, match.groupdict())
+    return match
 
 
 def path_from_format(directory: pathlib.Path, format: str, name: str, ext: str) -> pathlib.Path:

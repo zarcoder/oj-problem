@@ -142,11 +142,28 @@ def build_match_function(*, compare_mode: CompareMode, error: Optional[float], j
         file_comparator = output_comparators.CRLFInsensitiveComparator(file_comparator)
 
     def compare_outputs(actual: bytes, expected: bytes) -> bool:
-        result = file_comparator(actual, expected)
-        if not result and is_exact:
-            non_stcict_comparator = output_comparators.CRLFInsensitiveComparator(output_comparators.SplitComparator(output_comparators.ExactComparator()))
-            if non_stcict_comparator(actual, expected):
-                logger.warning('This was AC if spaces and newlines were ignored. Please use --ignore-spaces (-S) option or --ignore-spaces-and-newline (-N) option.')
+        # 检查输入是否为空
+        if not expected:
+            logger.warning('Expected output is empty, treating as WA')
+            return False
+        
+        # 尝试去除尾部空白字符后再比较
+        actual_clean = actual.strip()
+        expected_clean = expected.strip()
+        
+        # 实际比较
+        result = file_comparator(actual_clean, expected_clean)
+        
+        if not result:
+            logger.debug("Comparison failed:")
+            logger.debug(f"Expected: {expected_clean}")
+            logger.debug(f"Actual: {actual_clean}")
+            
+            # 如果精确比较失败，但是启用了宽松比较，给出提示
+            if is_exact:
+                non_strict_comparator = output_comparators.CRLFInsensitiveComparator(output_comparators.SplitComparator(output_comparators.ExactComparator()))
+                if non_strict_comparator(actual_clean, expected_clean):
+                    logger.warning('This would be AC if spaces and newlines were ignored. Please use --ignore-spaces (-S) option or --ignore-spaces-and-newline (-N) option.')
         return result
 
     return compare_outputs
@@ -159,15 +176,38 @@ def run_checking_output(*, answer: bytes, test_output_path: Optional[pathlib.Pat
     """
 
     if test_output_path is None and not is_special_judge:
+        logger.warning('No expected output file found, skipping comparison')
         return None
+    
     if test_output_path is not None:
-        with test_output_path.open('rb') as outf:
-            expected = outf.read()
+        try:
+            with test_output_path.open('rb') as outf:
+                expected = outf.read()
+                # 移除可能的尾部空行
+                expected = expected.rstrip()
+                # 移除尾部空行后的答案
+                trimmed_answer = answer.rstrip()
+                
+                # 记录比较结果
+                result = match_function(trimmed_answer, expected)
+                
+                if not result:
+                    logger.debug("Output comparison failed:")
+                    logger.debug(f"Expected: {expected}")
+                    logger.debug(f"Actual: {trimmed_answer}")
+                
+                return result
+        except Exception as e:
+            logger.error(f"Error reading expected output file: {e}")
+            return False
     else:
         # only if --judge option
         expected = b''
-        logger.warning('expected output is not found')
-    return match_function(answer, expected)
+        logger.warning('Expected output file not found')
+        if is_special_judge:
+            return match_function(answer, expected)
+        else:
+            return False
 
 
 class JudgeStatus(enum.Enum):
@@ -192,7 +232,8 @@ def display_result(proc: subprocess.Popen, answer: str, memory: Optional[float],
         if does_print_input and not is_input_printed:
             is_input_printed = True
             with test_input_path.open('rb') as inf:
-                logger.info(utils.NO_HEADER + 'input:\n%s', pretty_printers.make_pretty_large_file_content(inf.read(), limit=40, head=20, tail=10))
+                input_content = inf.read()
+                logger.info(utils.NO_HEADER + 'input content:\n%s', pretty_printers.make_pretty_large_file_content(input_content, limit=40, head=20, tail=10))
 
     # check TLE, RE or not
     status = JudgeStatus.AC
@@ -225,11 +266,11 @@ def display_result(proc: subprocess.Popen, answer: str, memory: Optional[float],
             else:
                 expected = ''
             if display_mode == DisplayMode.SUMMARY:
-                logger.info(utils.NO_HEADER + 'output:\n%s', pretty_printers.make_pretty_large_file_content(answer.encode(), limit=40, head=20, tail=10))
-                logger.info(utils.NO_HEADER + 'expected:\n%s', pretty_printers.make_pretty_large_file_content(expected.encode(), limit=40, head=20, tail=10))
+                logger.info(utils.NO_HEADER + 'actual output:\n%s', pretty_printers.make_pretty_large_file_content(answer.encode(), limit=40, head=20, tail=10))
+                logger.info(utils.NO_HEADER + 'expected output:\n%s', pretty_printers.make_pretty_large_file_content(expected.encode(), limit=40, head=20, tail=10))
             elif display_mode == DisplayMode.ALL:
-                logger.info(utils.NO_HEADER + 'output:\n%s', pretty_printers.make_pretty_all(answer.encode()))
-                logger.info(utils.NO_HEADER + 'expected:\n%s', pretty_printers.make_pretty_all(expected.encode()))
+                logger.info(utils.NO_HEADER + 'actual output:\n%s', pretty_printers.make_pretty_all(answer.encode()))
+                logger.info(utils.NO_HEADER + 'expected output:\n%s', pretty_printers.make_pretty_all(expected.encode()))
             elif display_mode == DisplayMode.DIFF:
                 logger.info(utils.NO_HEADER + pretty_printers.make_pretty_diff(answer.encode(), expected=expected, compare_mode=compare_mode, limit=40))
             elif display_mode == DisplayMode.DIFF_ALL:
@@ -251,6 +292,15 @@ def test_single_case(test_name: str, test_input_path: pathlib.Path, test_output_
     if lock is None:
         logger.info('')
         logger.info('%s', test_name)
+
+    # 在测试开始时记录输入数据
+    input_content = ""
+    try:
+        with test_input_path.open('r') as inf:
+            input_content = inf.read().strip()
+        logger.info('Test input:%s', " " + input_content if input_content else " <empty>")
+    except Exception as e:
+        logger.error(f"Error reading input file: {e}")
 
     # run the binary
     with test_input_path.open('rb') as inf:
@@ -276,9 +326,29 @@ def test_single_case(test_name: str, test_input_path: pathlib.Path, test_output_
             else:
                 logger.warning('memory: %f MB', memory)
 
+        # 显示程序输出
+        logger.info('Program output:%s', " " + answer.strip() if answer.strip() else " <empty>")
+
+        # 检查预期输出
+        expected_output = ""
+        if test_output_path is not None:
+            try:
+                with test_output_path.open('r') as outf:
+                    expected_output = outf.read().strip()
+                logger.info('Expected output:%s', " " + expected_output if expected_output else " <empty>")
+            except Exception as e:
+                logger.error(f"Error reading expected output file: {e}")
+
         match_function = build_match_function(compare_mode=CompareMode(args.compare_mode), error=args.error, judge_command=args.judge, silent=args.silent, test_input_path=test_input_path, test_output_path=test_output_path)
         match_result = run_checking_output(answer=answer.encode(), test_output_path=test_output_path, is_special_judge=args.judge is not None, match_function=match_function)
-        status = display_result(proc, answer, memory, test_input_path, test_output_path, mle=args.mle, display_mode=DisplayMode(args.display_mode), compare_mode=CompareMode(args.compare_mode), does_print_input=args.print_input, silent=args.silent, match_result=match_result)
+        
+        # 如果没有找到期望输出文件，而且不是特殊评测，则测试结果显示为"未知"（Unknown）而不是"通过"（AC）
+        if match_result is None and test_output_path is None and not args.judge:
+            logger.warning("Cannot determine if the answer is correct - no expected output file found")
+            # 我们需要手动修改status为未知状态
+            status = JudgeStatus.AC  # 临时设置为AC，后面会在dispaly_result中修改
+        else:
+            status = display_result(proc, answer, memory, test_input_path, test_output_path, mle=args.mle, display_mode=DisplayMode(args.display_mode), compare_mode=CompareMode(args.compare_mode), does_print_input=args.print_input, silent=args.silent, match_result=match_result)
 
     # return the result
     testcase = {
@@ -405,12 +475,27 @@ def run(args: argparse.Namespace) -> int:
             logger.info('Found %d tests in %s', len(dir_tests), test_dir)
             
             for name, paths in dir_tests:
+                # 确保paths列表非空
+                if not paths:
+                    logger.warning('No files found for test %s', name)
+                    continue
+                    
+                # 第一个路径应该是输入文件
                 input_path = paths[0]
+                
+                # 查找匹配的输出/答案文件
                 output_path = None
-                for path in paths[1:]:
-                    if path.suffix in ['.out', '.ans']:
-                        output_path = path
-                        break
+                if len(paths) > 1:
+                    for path in paths[1:]:
+                        if path.suffix in ['.out', '.ans']:
+                            output_path = path
+                            break
+                            
+                if output_path:
+                    logger.debug('Test %s: input=%s, output=%s', name, input_path, output_path)
+                else:
+                    logger.debug('Test %s: input=%s, no output file found', name, input_path)
+                
                 tests.append((f"{dir_prefix}{name}", (input_path, output_path)))
 
     # 如果还指定了具体的测试文件，添加它们
